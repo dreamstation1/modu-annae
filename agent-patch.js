@@ -1,6 +1,7 @@
 (function(){
   if(window.__agentPatch)return;
   window.__agentPatch=true;
+  const KEY='';
 
   const PROFILES={
     normal:{label:'일반',icon:'🧍',speed:1.2},
@@ -444,7 +445,7 @@ function iye(w){const c=String(w).charCodeAt(String(w).length-1)-0xAC00;return c
     drawer.querySelectorAll('.ag-tabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===S.tab));
     $('agAsk').hidden=S.tab!=='chat';
     const body=$('agBody');
-    if(!S.stop){body.innerHTML='<div class="ag-say">지도에서 정류소를 누르고 <b>♿ 이 정류장 도착 순서</b> 버튼을 눌러 주세요.</div>';return;}
+    if(!S.stop&&S.tab!=='chat'){body.innerHTML='<div class="ag-say">지도에서 정류소를 누르고 <b>♿ 이 정류장 도착 순서</b> 버튼을 눌러 주세요.</div>';return;}
     if(S.tab==='queue'){
       if(!S.queue){body.innerHTML='<div class="ag-say">버스 정보를 불러오는 중이에요…</div>';return;}
       const say=queueSentence(S.queue);
@@ -472,7 +473,7 @@ function iye(w){const c=String(w).charCodeAt(String(w).length-1)-0xAC00;return c
     }else{
       body.innerHTML=`<div class="ag-chat" id="agChat"></div>
         <div class="ag-sugg">${['지금 몇 번째에 서 있어?','지금 가면 탈 수 있어?','저상버스 언제 와?','덜 붐비는 버스는?'].map(t=>`<button type="button">${t}</button>`).join('')}</div>
-        <div class="ag-key">AI 키 (선택)<input id="agKey" type="password" placeholder="입력하면 더 자연스럽게 대화해요" value="${esc(lsGet('agentKey')||'')}"></div>`;
+        <div class="ag-key">AI 키 (선택)<input id="agKey" type="password" placeholder="입력하면 더 자연스럽게 대화해요" value="${esc((lsGet('agentKey')||KEY)||'')}"></div>`;
       const log=$('agChat');
       S.chat.forEach(m=>{const d=document.createElement('div');d.className='ag-msg '+m.c;d.textContent=m.t;log.appendChild(d);});
       if(!S.chat.length)log.innerHTML='<div class="ag-msg bot">버스에 대해 편하게 물어보세요. 말로 물어봐도 돼요.</div>';
@@ -597,10 +598,10 @@ function iye(w){const c=String(w).charCodeAt(String(w).length-1)-0xAC00;return c
   async function ask(text){
     if(!text.trim()||S.busy)return;
     S.busy=true;S.tab='chat';S.chat.push({c:'me',t:text});render();
-    const log=$('agChat'),wait=document.createElement('div');wait.className='ag-msg tool';wait.textContent='생각하는 중…';log.appendChild(wait);
+    const log=$('agChat'),wait=document.createElement('div');wait.className='ag-msg tool';wait.textContent='생각하는 중…';if(log)log.appendChild(wait);
     const onTool=n=>{wait.textContent='· '+(TOOL_LABEL[n]||n);};
     let ans;
-    const key=lsGet('agentKey');
+    const key=(lsGet('agentKey')||KEY);
     try{ans=key?await askLLM(key,text,onTool):await askRules(text,onTool);}
     catch(e){history.length=0;try{ans=await askRules(text,onTool);}catch(x){ans='지금은 정보를 불러오지 못했어요.';}}
     S.chat.push({c:'bot',t:ans});S.busy=false;render();speak(ans);
