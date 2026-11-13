@@ -1569,7 +1569,7 @@ function updateUrlState(extra={}){
   p.set('z',String(map.getZoom()));
   p.set('lat',c.lat.toFixed(6));
   p.set('lng',c.lng.toFixed(6));
-  try{ history.replaceState(null,'','#'+p.toString()); }catch(e){ /* sandboxed preview (about:srcdoc) can't rewrite the URL - ignore */ }
+  try{ history.replaceState(null,'',location.pathname+location.search+'#'+p.toString()); }catch(e){ /* sandboxed preview (about:srcdoc) can't rewrite the URL - ignore */ }
 }
 function applyUrlState(){
   const raw=location.hash.replace(/^#/,'');
