@@ -1,7 +1,6 @@
 (function(){
   if(window.__agentPatch)return;
   window.__agentPatch=true;
-  const KEY='';
 
   const PROFILES={
     normal:{label:'일반',icon:'🧍',speed:1.2},
@@ -14,7 +13,6 @@
   const CONG={'3':'여유','4':'보통','5':'혼잡','6':'매우 혼잡'};
   const BUS_LEN=11,BUS_GAP=3,DWELL=20,SIGNAL_CYCLE=140;
   const TDATA_SIGNAL='https://t-data.seoul.go.kr/apig/apiman-gateway/tapi/v2xSignalPhaseTimingFusionCurrentInfo/1.0';
-  const LLM_MODEL='claude-opus-5-5';
   const DIRS=[['nt',0,'북'],['ne',45,'북동'],['et',90,'동'],['se',135,'남동'],['st',180,'남'],['sw',225,'남서'],['wt',270,'서'],['nw',315,'북서']];
 
   const NODE=new Map();
@@ -501,13 +499,11 @@ function iye(w){const c=String(w).charCodeAt(String(w).length-1)-0xAC00;return c
       renderCare(body);
     }else{
       body.innerHTML=`<div class="ag-chat" id="agChat"></div>
-        <div class="ag-sugg">${['지금 몇 번째에 서 있어?','지금 가면 탈 수 있어?','저상버스 언제 와?','덜 붐비는 버스는?'].map(t=>`<button type="button">${t}</button>`).join('')}</div>
-        <div class="ag-key">AI 키 (선택)<input id="agKey" type="password" placeholder="입력하면 더 자연스럽게 대화해요" value="${esc((lsGet('agentKey')||KEY)||'')}"></div>`;
+        <div class="ag-sugg">${['지금 몇 번째에 서 있어?','지금 가면 탈 수 있어?','저상버스 언제 와?','덜 붐비는 버스는?'].map(t=>`<button type="button">${t}</button>`).join('')}</div>`;
       const log=$('agChat');
       S.chat.forEach(m=>{const d=document.createElement('div');d.className='ag-msg '+m.c;d.textContent=m.t;log.appendChild(d);});
       if(!S.chat.length)log.innerHTML='<div class="ag-msg bot">버스에 대해 편하게 물어보세요. 말로 물어봐도 돼요.</div>';
       body.querySelectorAll('.ag-sugg button').forEach(b=>b.onclick=()=>ask((S.route?S.route+'번 ':'')+b.textContent));
-      $('agKey').onchange=e=>lsSet('agentKey',e.target.value.trim());
       body.scrollTop=1e9;
     }
   }
@@ -572,27 +568,6 @@ function iye(w){const c=String(w).charCodeAt(String(w).length-1)-0xAC00;return c
     return `너는 서울 시내버스 이용을 돕는 안내 도우미야. 이용자 유형: ${P().label}. 현재 정류소: ${S.stop?S.stop.name+'('+S.stop.ars+')':'없음'}. 선택한 노선: ${S.route||'없음'}.
 버스 정보는 반드시 도구로 실시간 확인한 뒤 답해. 2~4문장 존댓말로, 표·기호·이모지 없이 귀로 듣기 좋게 말해.
 버스 순서는 "맨 앞, 두 번째"로, 위치는 미터로 말해. 휠체어 사용자에게는 저상버스만 권하고, 위험하면 서두르게 하지 말고 다음 버스를 권해.`;
-  }
-  const history=[];
-  async function askLLM(key,text,onTool){
-    history.push({role:'user',content:text});
-    const system=sysPrompt();
-    for(let i=0;i<6;i++){
-      const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-        body:JSON.stringify({model:LLM_MODEL,max_tokens:16000,output_config:{effort:'low'},system,tools:TOOLS,messages:history})});
-      if(!res.ok)throw new Error('응답 오류 '+res.status);
-      const r=await res.json();
-      history.push({role:'assistant',content:r.content});
-      if(r.stop_reason==='refusal')return'그 질문에는 답하기 어려워요.';
-      if(r.stop_reason!=='tool_use')return r.content.filter(b=>b.type==='text').map(b=>b.text).join('\n').trim();
-      const results=await Promise.all(r.content.filter(b=>b.type==='tool_use').map(async b=>{
-        onTool(b.name);
-        try{return{type:'tool_result',tool_use_id:b.id,content:JSON.stringify(await tool(b.name,b.input))};}
-        catch(e){return{type:'tool_result',tool_use_id:b.id,content:String(e.message||e),is_error:true};}
-      }));
-      history.push({role:'user',content:results});
-    }
-    return'확인이 오래 걸렸어요. 다시 물어봐 주세요.';
   }
   const oHist=[];
   const OL={ok:null,at:0,model:''};
@@ -670,8 +645,6 @@ function iye(w){const c=String(w).charCodeAt(String(w).length-1)-0xAC00;return c
     const log=$('agChat'),wait=document.createElement('div');wait.className='ag-msg tool';wait.textContent='생각하는 중…';if(log)log.appendChild(wait);
     const onTool=n=>{wait.textContent='· '+(TOOL_LABEL[n]||n);};
     let ans;
-    const key=(lsGet('agentKey')||KEY);
-    if(key){try{ans=await askLLM(key,text,onTool);}catch(e){history.length=0;}}
     if(!ans&&await olCheck()){try{ans=await askOllama(text,onTool);}catch(e){oHist.length=0;OL.ok=null;}}
     if(!ans){try{ans=await askRules(text,onTool);}catch(x){ans='지금은 정보를 불러오지 못했어요.';}}
     S.chat.push({c:'bot',t:ans});S.busy=false;render();speak(ans);
