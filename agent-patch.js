@@ -592,17 +592,18 @@ function iye(w){const c=String(w).charCodeAt(String(w).length-1)-0xAC00;return c
   }
   async function askOllama(text,onTool){
     const facts=await askRules(text,onTool);S.lastFacts=facts;
+    const list=S.queue&&S.queue.list?S.queue.list.filter(v=>!v.leaving).slice(0,8).map((v,i)=>`${i+1}. ${v.route}번 ${v.atStop?'지금 정류장에 있음':fmt(v.eta)+' 뒤 도착'}, ${v.low?'저상버스':'일반버스'}, 혼잡도 ${CONG[v.cong]||'정보 없음'}`).join('\n'):'';
     onTool('ollama');
     oHist.push({role:'user',content:text});
     const sys=sysPrompt()+`
 지금 확인된 정보: "${facts}"
-위 확인된 정보에 있는 버스 번호, 순서, 시간, 저상 여부만 써서 답해. 숫자와 순서를 절대 바꾸거나 새로 지어내지 마. 확인된 정보에 없는 내용은 모른다고 짧게 말해. '확인된 정보'라는 말은 쓰지 말고, 정류장에서 직접 안내하듯 자연스럽게 말해. 반드시 한국어로만 답해.`;
+${list?'다가오는 버스 목록(가까운 순):\n'+list+'\n':''}위 확인된 정보에 있는 버스 번호, 순서, 시간, 저상 여부만 써서 답해. 숫자와 순서를 절대 바꾸거나 새로 지어내지 마. 확인된 정보에 없는 내용은 모른다고 짧게 말해. '확인된 정보', '제공된 정보', '포함되어 있지 않' 같은 말은 절대 쓰지 말고, 정류장에서 직접 안내하듯 자연스럽게 말해. 반드시 한국어로만 답해.`;
     const res=await fetch(olBase()+'/api/chat',{method:'POST',headers:{'content-type':'application/json'},
       body:JSON.stringify({model:OL.model,stream:false,...(/qwen3|gemma4/.test(OL.model)?{think:false}:{}),options:{temperature:0.2,num_gpu:0},keep_alive:'60m',messages:[{role:'system',content:sys}].concat(oHist.slice(-8))})});
     if(!res.ok)throw new Error('응답 오류 '+res.status);
     const m=(await res.json()).message||{};
     const ans=String(m.content||'').trim();
-    if(!ans)return facts;
+    if(!ans||/확인된 정보|제공된 정보|알 수 없|포함되어 있지 않/.test(ans))return facts;
     oHist.push({role:'assistant',content:ans});
     return ans;
   }
@@ -626,7 +627,10 @@ function iye(w){const c=String(w).charCodeAt(String(w).length-1)-0xAC00;return c
     onTool('stop_queue');
     const q=await tool('stop_queue',{route:S.route});
     if(/(덜 ?붐|한산|혼잡|자리)/.test(t)){
-      const c=S.queue.list.filter(v=>!S.route||v.route===S.route).filter(v=>CONG[v.cong]).sort((a,b)=>a.cong-b.cong||a.eta-b.eta)[0];
+      const has=S.queue.list.filter(v=>!v.leaving&&CONG[v.cong]),pool=route?has.filter(v=>v.route===route):has;
+      const c=(pool.length?pool:has).slice().sort((a,b)=>a.cong-b.cong||a.eta-b.eta)[0];
+      if(c&&!pool.length&&route)return`${bn(route)}은 혼잡도 정보가 없어요. 지금 오는 버스 중에서는 ${bn(c.route)}${c.atStop?'이 정류장에 있고':`이 ${fmt(c.eta)} 뒤에 오는데`} ${CONG[c.cong]}${/[가-힣]$/.test(CONG[c.cong])&&iye(CONG[c.cong])==='예요'?'라':'이라'} 가장 덜 붐벼요.`;
+      if(c&&!route)return`지금 오는 버스 중에서는 ${bn(c.route)}${c.atStop?'이 정류장에 있고':`이 ${fmt(c.eta)} 뒤에 오는데`} ${CONG[c.cong]}${/[가-힣]$/.test(CONG[c.cong])&&iye(CONG[c.cong])==='예요'?'라':'이라'} 가장 덜 붐벼요.`;
       if(c)return`${bn(c.route)} 중에서는 ${fmt(c.eta)} 뒤에 오는 차가 ${CONG[c.cong]}${/[가-힣]$/.test(CONG[c.cong])&&iye(CONG[c.cong])==='예요'?'라':'이라'} 가장 덜 붐벼요.`;
     }
     if(/저상/.test(t)){
