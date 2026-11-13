@@ -376,13 +376,40 @@ function iye(w){const c=String(w).charCodeAt(String(w).length-1)-0xAC00;return c
     return o.join(' ');
   }
 
+  function sino(n){
+    const d=['','일','이','삼','사','오','육','칠','팔','구'],u=['','십','백','천'];
+    n=String(n).replace(/^0+/,'');if(!n)return'공';if(n.length>4)return n.split('').map(c=>d[c]||'공').join('');
+    let r='';[...n].forEach((c,i)=>{const k=n.length-1-i;if(c==='0')return;r+=(c==='1'&&k>0?'':d[c])+u[k];});return r;
+  }
+  function sayable(t){
+    return String(t).replace(/([A-Za-z]?)(\d+)(?:-(\d+))?번(?!째)/g,(m,a,b,c)=>(a?({N:'엔',M:'엠'}[a.toUpperCase()]||a)+' ':'')+sino(b)+(c?' 다시 '+sino(c):'')+'번');
+  }
+  function voices(){
+    const all=('speechSynthesis' in window)?speechSynthesis.getVoices().filter(v=>v.lang&&v.lang.toLowerCase().startsWith('ko')):[];
+    const score=v=>(/natural|online|neural/i.test(v.name)?3:0)+(/google/i.test(v.name)?2:0)+(/sunhi|injoon|hyunsu|yuna/i.test(v.name)?1:0);
+    return all.sort((a,b)=>score(b)-score(a));
+  }
+  function pickVoice(){const vs=voices(),want=lsGet('agentVoice');return vs.find(v=>v.name===want)||vs[0]||null;}
   function speak(t){
     if(P().mute||!('speechSynthesis' in window)||!t)return;
     speechSynthesis.cancel();
-    const u=new SpeechSynthesisUtterance(t);u.lang='ko-KR';
-    const v=speechSynthesis.getVoices().find(v=>v.lang&&v.lang.startsWith('ko'));if(v)u.voice=v;
+    const u=new SpeechSynthesisUtterance(sayable(t));u.lang='ko-KR';
+    const v=pickVoice();if(v)u.voice=v;
+    u.rate=+(lsGet('agentRate')||1);
     speechSynthesis.speak(u);
   }
+  function voiceHtml(){
+    const vs=voices();if(!vs.length)return'';
+    const cur=(pickVoice()||{}).name,rate=lsGet('agentRate')||'1';
+    return `<div class="ag-key">목소리<select id="agVoice">${vs.map(v=>`<option${v.name===cur?' selected':''}>${esc(v.name)}</option>`).join('')}</select>
+      <select id="agRate">${[['0.85','천천히'],['1','보통'],['1.15','조금 빠르게']].map(([k,l])=>`<option value="${k}"${k===rate?' selected':''}>${l}</option>`).join('')}</select></div>`;
+  }
+  function bindVoice(say){
+    const vs=$('agVoice'),rt=$('agRate');
+    if(vs)vs.onchange=e=>{lsSet('agentVoice',e.target.value);speak(say);};
+    if(rt)rt.onchange=e=>{lsSet('agentRate',e.target.value);speak(say);};
+  }
+  if('speechSynthesis' in window)speechSynthesis.addEventListener('voiceschanged',()=>{if(S.open&&S.tab==='queue'&&!$('agVoice'))render();});
   function alertUser(n){
     if(navigator.vibrate){const p=[];for(let i=0;i<Math.max(1,n);i++)p.push(220,160);navigator.vibrate(p);}
     if(P().flash){drawer.classList.remove('flash');void drawer.offsetWidth;drawer.classList.add('flash');}
@@ -452,8 +479,10 @@ function iye(w){const c=String(w).charCodeAt(String(w).length-1)-0xAC00;return c
       body.innerHTML=`<div class="ag-say" aria-live="polite" id="agSay">${esc(say)}</div>${bayHtml(S.queue)}
         <div class="ag-btns">${P().mute?'':'<button class="pri" id="agSpeak">🔊 음성으로 듣기</button>'}<button id="agRefresh">↻ 새로고침</button></div>
         <div class="ag-h">다가오는 버스</div>${listHtml(S.queue)}
+        ${P().mute?'':voiceHtml()}
         <div class="ag-note">버스 위치는 GPS 기준이라 실제와 몇 초 차이가 날 수 있어요. ${P().flash?'내 버스가 들어오면 화면이 노랗게 깜빡이고 진동이 울려요.':P().voice?'순서가 바뀌면 자동으로 읽어 드려요.':''}</div>`;
       const sp=$('agSpeak');if(sp)sp.onclick=()=>speak(say);
+      bindVoice(say);
       $('agRefresh').onclick=()=>refresh(true);
     }else if(S.tab==='catch'){
       body.innerHTML=`<div class="ag-grid">
