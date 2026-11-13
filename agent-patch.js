@@ -216,7 +216,7 @@
           b.onclick=()=>openDrawer(s);
           sel.appendChild(b);
         }
-        if(S.open&&s&&s.mode!=='subway'&&s!==S.stop){S.stop=s;S.queue=null;S.lastOrder='';refresh(true);}
+        if(S.open&&s&&s.mode!=='subway'&&s!==S.stop){S.stop=s;S.queue=null;S.lastOrder='';refresh(true);if(S.boardStop)boardStation();}
       }catch(e){}
       return r;
     };
@@ -611,11 +611,11 @@ function iye(w){const c=String(w).charCodeAt(String(w).length-1)-0xAC00;return c
 
   const CARE={
     normal:{tab:'🧭 편의',parts:['watch','pick','alight','led']},
-    blind:{tab:'🦯 도우미',parts:['watch','guide','alight','card']},
+    blind:{tab:'🦯 도우미',parts:['watch','guide','alight','card','led']},
     deaf:{tab:'🧏 보는 안내',parts:['led','watch','card','caption','alight']},
     wheel:{tab:'🦽 휠체어',parts:['lowline','card','watch','alight','led']},
-    elder:{tab:'🧓 쉬운 안내',parts:['simple','watch','alight','card','share']},
-    stroller:{tab:'👶 편한 버스',parts:['pick','lowline','card','alight','share']}
+    elder:{tab:'🧓 쉬운 안내',parts:['simple','watch','alight','card','share','led']},
+    stroller:{tab:'👶 편한 버스',parts:['pick','lowline','card','alight','share','led']}
   };
   Object.assign(S,{watch:false,watchSeen:new Set(),watchMsg:'',full:null,ride:null,rideTimer:null,alightIdx:'',alightName:'',guide:null,lowCache:null,ledNotice:'',cardText:'',toast:''});
 
@@ -657,13 +657,30 @@ function iye(w){const c=String(w).charCodeAt(String(w).length-1)-0xAC00;return c
       (rows.map(v=>{const gi=q.group.indexOf(v);return`<div class="row${v===mine?' mine':''}${v===mine&&(v.atStop||gi>=0)?' blink':''}"><span>${gi>=0?'①②③④⑤⑥'[gi]||'·':'·'}</span><span>${esc(v.route)}${v.low?'<small style="color:#29c5f6;text-shadow:0 0 6px #29c5f6;font-size:.5em"> 저상</small>':''}</span><span>${v.atStop?'도착':v.eta<60?'곧':Math.round(v.eta/60)+'분'}</span></div>`;}).join('')||'<div class="row"><span></span><span>운행 정보 없음</span><span></span></div>')+
       `<div class="note"><span>${esc(ledNote())}</span></div></div><div style="color:#aaa;font-size:14px;margin-top:10px">①②③ 정류장에 서는 순서 · 파란 글씨 = 저상버스 · 빨간 줄 = 내 버스</div>`;
   }
+  function boardBase(){let b=(lsGet('agentBoard')||'').trim().replace(/\/+$/,'');if(b&&!/^https?:\/\//.test(b))b='http://'+b;return b;}
+  async function boardHit(path){
+    const base=boardBase();if(!base)return false;
+    if(location.protocol==='https:'&&base.startsWith('http:')){S.boardMsg='전광판은 노트북에서 연 시연 주소(http://…)에서만 연결돼요.';return false;}
+    try{await fetch(base+path,{mode:'no-cors',cache:'no-store'});return true;}catch(e){return false;}
+  }
+  function cut(t,n){t=String(t);while(encodeURIComponent(t).length>n)t=t.slice(0,-1);return t;}
+  async function boardStation(){
+    if(!S.stop)return false;
+    const ok=await boardHit(`/custom?ars=${encodeURIComponent(S.stop.ars)}&name=${encodeURIComponent(cut(S.stop.name,150))}`);
+    S.boardMsg=ok?`전광판을 ${S.stop.name} 정류장으로 바꿨어요.`:S.boardMsg||'전광판에 연결하지 못했어요. 같은 와이파이인지, 주소가 맞는지 확인해 주세요.';
+    S.boardStop=ok?S.stop.ars:'';return ok;
+  }
+  async function boardRoute(){
+    if(!S.route)return false;
+    const ok=await boardHit(`/query?route=${encodeURIComponent(S.route)}&pin=1`);
+    S.boardMsg=ok?`전광판 윗줄에 ${jo(bn(S.route),'을','를')} 고정했어요.`:S.boardMsg;return ok;
+  }
   async function boardSend(text){
-    const base=(lsGet('agentBoard')||'').trim().replace(/\/+$/,'');if(!base||!S.stop)return'';
-    try{
-      await fetch(base+'/api/board/set_station',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ars_id:S.stop.ars,name:S.stop.name})});
-      const r=await fetch(base+'/api/board/notice',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:text.slice(0,48)})});
-      const j=await r.json();return j.ok?'정류장 전광판에도 띄웠어요.':'전광판 서버는 연결됐지만 전광판이 응답하지 않아요.';
-    }catch(e){return'전광판 서버에 연결하지 못했어요.';}
+    if(!boardBase()||!S.stop)return'';
+    if(S.boardStop!==S.stop.ars)await boardStation();
+    const ok=await boardHit(`/notice?text=${encodeURIComponent(cut(text,180))}`);
+    S.boardMsg=ok?`전광판 아랫줄에 15초 동안 띄웠어요: ${cut(text,180)}`:S.boardMsg||'전광판에 연결하지 못했어요.';
+    return S.boardMsg;
   }
 
   function checkWatch(q){
@@ -676,7 +693,7 @@ function iye(w){const c=String(w).charCodeAt(String(w).length-1)-0xAC00;return c
     const w=bn(m.route),p=P();
     const t=[`${jo(w,'이','가')} 약 3분 뒤에 와요. 정류장으로 갈 준비를 하세요.`,`${jo(w,'이','가')} 1분 안에 와요.`,`${jo(w,'이','가')} 지금 들어와요. ${ord(gi+1)}에 서요.`,`${w} 정류장에 섰어요. ${ord(gi+1)} 버스예요.`][stage]+(stage>=2&&p.low?' 가운데 문 경사판 쪽으로 가세요.':'');
     S.watchMsg=t;speak(t);alertUser(stage>=2?gi+1:1);
-    if(stage>=2&&(p.low||p.lowPref)){S.ledNotice=`${w} ${p.low?'휠체어':'유모차'} 탑승 대기 · 경사판 부탁드려요`;boardSend(S.ledNotice);}
+    if(stage>=2&&(p.low||p.lowPref)){S.ledNotice=`${w} ${p.low?'휠체어':'유모차'} 탑승 대기 · 경사판 부탁드려요`;boardSend(`${w} ${p.low?'휠체어':'유모차'} 탑승 대기`);}
   }
 
   function routeObj(name){const m=S.queue&&S.queue.list.find(v=>v.route===name);return(m&&ROUTE_BY_ID.get(m.routeId))||ROUTES.find(x=>x.name===name)||null;}
@@ -843,7 +860,7 @@ function iye(w){const c=String(w).charCodeAt(String(w).length-1)-0xAC00;return c
           :`<p>내릴 정류장을 고르고, 버스에 타면 버튼을 눌러 주세요.</p><select id="agDest"><option value="">내릴 정류장 선택</option>${a.opts.map(([j,n],k)=>`<option value="${j}"${String(j)===String(S.alightIdx)?' selected':''}>${k+1}. ${esc(n)}</option>`).join('')}</select><div class="ag-btns"><button type="button" class="pri" id="agRide"${S.alightIdx?'':' disabled'}>버스 탔어요 · 알림 시작</button></div>`)+`</div>`);
       }
       else if(part==='card')h.push(`<div class="ag-box"><h4>🪧 기사님께 보여주기</h4><p>누르면 화면 가득 크게 보여요. 말하기 어려울 때 기사님이나 주변 사람에게 보여 주세요.</p><div class="ag-cards">${cardTexts().map((t,k)=>`<button type="button" data-card="${k}">${esc(t)}</button>`).join('')}</div><input id="agCardIn" placeholder="직접 쓰기 (예: 다음 정류장에서 내려요)" value="${esc(S.cardText)}"><div class="ag-btns"><button type="button" id="agCardGo">크게 보기</button></div></div>`);
-      else if(part==='led')h.push(`<div class="ag-box"><h4>🟧 정류장 LED 전광판</h4><p>정류장 LED 전광판처럼 도착 순서를 크게 보여 줘요. 내 버스는 빨간색으로 깜빡여요.</p><div class="ag-btns"><button type="button" class="pri" id="agLed">전광판 크게 보기</button></div><p>실제 전광판 서버와 연결하기 (선택)</p><input id="agBoard" placeholder="예) http://192.168.0.10:5000" value="${esc(lsGet('agentBoard')||'')}">${S.boardMsg?`<p>${esc(S.boardMsg)}</p>`:''}</div>`);
+      else if(part==='led')h.push(`<div class="ag-box"><h4>🟧 정류장 LED 전광판</h4><p>중간발표 때 만든 LED 전광판에 이 정류장 도착 정보와 알림을 띄워요. 전광판을 켜면 처음에 나오는 주소(IP)를 넣어 주세요.</p><input id="agBoard" inputmode="url" placeholder="전광판 주소 예) 172.20.10.3" value="${esc(lsGet('agentBoard')||'')}"><div class="ag-btns"><button type="button" class="pri" id="agBdStop"${boardBase()?'':' disabled'}>이 정류장 띄우기</button><button type="button" id="agBdRoute"${boardBase()&&S.route?'':' disabled'}>내 버스 고정</button><button type="button" id="agBdMsg"${boardBase()?'':' disabled'}>알림 보내기</button></div>${S.boardMsg?`<p><b>${esc(S.boardMsg)}</b></p>`:''}<div class="ag-btns"><button type="button" id="agLed">화면으로 크게 보기</button></div></div>`);
       else if(part==='caption')h.push(`<div class="ag-box"><h4>💬 주변 말소리 글자로 보기</h4><p>기사님 말이나 정류장·차내 안내방송을 큰 글자로 바꿔 보여 줘요.</p><div class="ag-btns"><button type="button" class="pri" id="agCap">받아쓰기 시작</button></div></div>`);
       else if(part==='lowline')h.push(`<div class="ag-box"><h4>♿ 다음 저상버스</h4><div id="agLow"></div><div class="ag-btns"><button type="button" id="agLowRe">↻ 다시 보기</button>${p.mute?'':'<button type="button" id="agLowSay">🔊 듣기</button>'}</div></div>`);
       else if(part==='pick')h.push(`<div class="ag-box"><h4>🙂 편하게 탈 차 고르기</h4><p><b>${esc(pickSentence())}</b></p><p>${S.profile==='stroller'?'저상버스이고 덜 붐비는 차를 먼저 골라요.':'덜 붐비는 차를 먼저 골라요.'}</p></div>`);
@@ -858,12 +875,15 @@ function iye(w){const c=String(w).charCodeAt(String(w).length-1)-0xAC00;return c
     on('agRide',startRide);on('agRideStop',stopRide);
     body.querySelectorAll('[data-card]').forEach(b=>b.onclick=()=>{
       const t=b.textContent;openFull('card',t);
-      if(/경사판|유모차|휠체어/.test(t)&&S.route){S.ledNotice=`${bn(S.route)} ${/유모차/.test(t)?'유모차':'휠체어'} 탑승 대기 · ${t}`;boardSend(S.ledNotice).then(m=>{S.boardMsg=m;});}
+      if(/경사판|유모차|휠체어/.test(t)&&S.route){const kind=/유모차/.test(t)?'유모차':'휠체어';S.ledNotice=`${bn(S.route)} ${kind} 탑승 대기 · ${t}`;boardSend(`${bn(S.route)} ${kind} 탑승 대기`);}
     });
     const ci=$('agCardIn');if(ci)ci.oninput=e=>{S.cardText=e.target.value;};
     on('agCardGo',()=>{if(S.cardText.trim())openFull('card',S.cardText.trim());});
     on('agLed',()=>openFull('led'));
-    const bd=$('agBoard');if(bd)bd.onchange=async e=>{lsSet('agentBoard',e.target.value.trim());S.boardMsg=e.target.value.trim()?await boardSend(`${S.stop.name} 모두의 안내 연결`):'';render();};
+    const bd=$('agBoard');if(bd)bd.onchange=async e=>{lsSet('agentBoard',e.target.value.trim());S.boardStop='';S.boardMsg='';if(e.target.value.trim())await boardStation();render();};
+    on('agBdStop',async()=>{S.boardMsg='';await boardStation();render();});
+    on('agBdRoute',async()=>{S.boardMsg='';await boardRoute();render();});
+    on('agBdMsg',async()=>{S.boardMsg='';const m=S.queue&&myBus(S.queue);await boardSend(m?`${bn(m.route)} ${m.atStop?'도착':fmt(m.eta)+' 뒤'}${P().low?' 휠체어 대기':''}`:`${S.stop.name} 모두의 안내`);render();});
     on('agCap',startCaption);
     if($('agLow'))loadLowLine(false);
     on('agLowRe',()=>loadLowLine(true));
