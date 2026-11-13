@@ -711,6 +711,7 @@ function iye(w){const c=String(w).charCodeAt(String(w).length-1)-0xAC00;return c
     const cur=parseInt(v.sectOrd,10)-1,at=String(v.stopFlag)==='1',left=R.dest-cur;
     const next=(NODE.get(String(R.route.nodes[cur+1]))||{}).name||'';
     let msg,level=0;
+    if(cur<R.from){R.msg=`탈 버스가 아직 ${R.from-cur}정거장 전에 있어요. 버스가 오면 그때부터 세어 드릴게요.`;rideUpd();return;}
     if(cur>R.dest||(cur===R.dest&&!at)){msg='내릴 정류장을 지났어요. 다음 정류장에서 내려서 반대편 버스를 타세요.';level=3;R.done=true;}
     else if(cur===R.dest){msg=`지금 ${jo(R.destName,'이에요','예요')}. 내리세요.`;level=3;R.done=true;}
     else if(left<=1){msg=`다음 정류장이 ${jo(R.destName,'이에요','예요')}. 하차 벨을 누르세요.`;level=2;}
