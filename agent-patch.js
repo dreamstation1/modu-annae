@@ -568,12 +568,15 @@ function iye(w){const c=String(w).charCodeAt(String(w).length-1)-0xAC00;return c
     }
     return{error:'unknown tool'};
   }
+  function sysPrompt(){
+    return `너는 서울 시내버스 이용을 돕는 안내 도우미야. 이용자 유형: ${P().label}. 현재 정류소: ${S.stop?S.stop.name+'('+S.stop.ars+')':'없음'}. 선택한 노선: ${S.route||'없음'}.
+버스 정보는 반드시 도구로 실시간 확인한 뒤 답해. 2~4문장 존댓말로, 표·기호·이모지 없이 귀로 듣기 좋게 말해.
+버스 순서는 "맨 앞, 두 번째"로, 위치는 미터로 말해. 휠체어 사용자에게는 저상버스만 권하고, 위험하면 서두르게 하지 말고 다음 버스를 권해.`;
+  }
   const history=[];
   async function askLLM(key,text,onTool){
     history.push({role:'user',content:text});
-    const system=`너는 서울 시내버스 이용을 돕는 안내 도우미야. 이용자 유형: ${P().label}. 현재 정류소: ${S.stop?S.stop.name+'('+S.stop.ars+')':'없음'}. 선택한 노선: ${S.route||'없음'}.
-버스 정보는 반드시 도구로 실시간 확인한 뒤 답해. 2~4문장 존댓말로, 표·기호·이모지 없이 귀로 듣기 좋게 말해.
-버스 순서는 "맨 앞, 두 번째"로, 위치는 미터로 말해. 휠체어 사용자에게는 저상버스만 권하고, 위험하면 서두르게 하지 말고 다음 버스를 권해.`;
+    const system=sysPrompt();
     for(let i=0;i<6;i++){
       const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
         body:JSON.stringify({model:LLM_MODEL,max_tokens:16000,output_config:{effort:'low'},system,tools:TOOLS,messages:history})});
@@ -588,6 +591,47 @@ function iye(w){const c=String(w).charCodeAt(String(w).length-1)-0xAC00;return c
         catch(e){return{type:'tool_result',tool_use_id:b.id,content:String(e.message||e),is_error:true};}
       }));
       history.push({role:'user',content:results});
+    }
+    return'확인이 오래 걸렸어요. 다시 물어봐 주세요.';
+  }
+  const oHist=[];
+  const OL={ok:null,at:0,model:''};
+  function olBase(){
+    const b=(lsGet('agentOllama')||'').trim().replace(/\/+$/,'');
+    if(b)return /^https?:\/\//.test(b)?b:'http://'+b;
+    const h=location.hostname;
+    return 'http://'+(!h||h==='localhost'||/github\.io$/.test(h)?'127.0.0.1':h)+':11434';
+  }
+  async function olCheck(){
+    if(OL.ok!==null&&Date.now()-OL.at<30000)return OL.ok;
+    OL.at=Date.now();
+    try{
+      const c=new AbortController();setTimeout(()=>c.abort(),1500);
+      const r=await fetch(olBase()+'/api/tags',{signal:c.signal});
+      const names=((await r.json()).models||[]).map(m=>m.name);
+      const want=lsGet('agentOllamaModel');
+      OL.model=names.find(n=>n===want)||names.find(n=>/^qwen/.test(n))||names.find(n=>/llama3/.test(n))||names[0]||'';
+      OL.ok=!!OL.model;
+    }catch(e){OL.ok=false;}
+    return OL.ok;
+  }
+  async function askOllama(text,onTool){
+    oHist.push({role:'user',content:text});
+    const tools=TOOLS.map(t=>({type:'function',function:{name:t.name,description:t.description,parameters:t.input_schema}}));
+    for(let i=0;i<6;i++){
+      const res=await fetch(olBase()+'/api/chat',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({model:OL.model,stream:false,options:{temperature:0.3},tools,messages:[{role:'system',content:sysPrompt()+' 반드시 한국어로만 답해.'}].concat(oHist.slice(-16))})});
+      if(!res.ok)throw new Error('응답 오류 '+res.status);
+      const m=(await res.json()).message||{};
+      oHist.push(m);
+      const calls=m.tool_calls||[];
+      if(!calls.length)return String(m.content||'').trim()||'다시 한 번 물어봐 주세요.';
+      for(const c of calls){
+        const f=c.function||{};onTool(f.name);
+        let a=f.arguments;if(typeof a==='string'){try{a=JSON.parse(a);}catch(e){a={};}}
+        let out;try{out=await tool(f.name,a||{});}catch(e){out={error:String(e.message||e)};}
+        oHist.push({role:'tool',tool_name:f.name,content:JSON.stringify(out)});
+      }
     }
     return'확인이 오래 걸렸어요. 다시 물어봐 주세요.';
   }
@@ -631,8 +675,9 @@ function iye(w){const c=String(w).charCodeAt(String(w).length-1)-0xAC00;return c
     const onTool=n=>{wait.textContent='· '+(TOOL_LABEL[n]||n);};
     let ans;
     const key=(lsGet('agentKey')||KEY);
-    try{ans=key?await askLLM(key,text,onTool):await askRules(text,onTool);}
-    catch(e){history.length=0;try{ans=await askRules(text,onTool);}catch(x){ans='지금은 정보를 불러오지 못했어요.';}}
+    if(key){try{ans=await askLLM(key,text,onTool);}catch(e){history.length=0;}}
+    if(!ans&&await olCheck()){try{ans=await askOllama(text,onTool);}catch(e){oHist.length=0;OL.ok=null;}}
+    if(!ans){try{ans=await askRules(text,onTool);}catch(x){ans='지금은 정보를 불러오지 못했어요.';}}
     S.chat.push({c:'bot',t:ans});S.busy=false;render();speak(ans);
   }
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
