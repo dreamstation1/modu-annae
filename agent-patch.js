@@ -187,7 +187,8 @@
 
   function toXY(lat,lng,lat0,lng0){return [(lng-lng0)*111320*Math.cos(lat0*Math.PI/180),(lat-lat0)*110540];}
   function fmt(s){s=Math.max(0,Math.round(s));if(s<60)return s+'초';const m=Math.floor(s/60),r=s%60;return r?`${m}분 ${r}초`:`${m}분`;}
-  function iye(w){const c=String(w).charCodeAt(String(w).length-1)-0xAC00;return c>=0&&c<11172&&c%28?'이에요':'예요';}
+  function jo(w,a,b){const c=String(w).charCodeAt(String(w).length-1)-0xAC00;return w+(c>=0&&c<11172&&c%28?a:b);}
+function iye(w){const c=String(w).charCodeAt(String(w).length-1)-0xAC00;return c>=0&&c<11172&&c%28?'이에요':'예요';}
   function bn(r){const m=String(r).match(/^(\d+)([가-힣]+)$/);return m?`${m[1]}번(${m[2]})`:r+'번';}
   function ord(n){return n===1?'맨 앞':(['','','두','세','네','다섯','여섯','일곱','여덟','아홉','열'][n]||n)+' 번째';}
   function routeOf(it){return ROUTE_BY_ID.get(String(it.busRouteId))||null;}
@@ -324,11 +325,12 @@
 
   function catchSentence(x){
     const p=P(),name=x.route?`${bn(x.route)}`:'버스',low=p.low?' 저상':'',o=[];
-    if(!x.pool.length)return`지금 오는${low} ${name}이 없어요.`;
-    if(x.verdict==='ok')o.push(`지금 출발하면${low} ${name} 탈 수 있어요.`);
-    else if(x.verdict==='tight')o.push(`${name} 탈 수는 있는데 빠듯해요. 서두르세요.`);
-    else if(x.verdict==='next')o.push(`이번${low} ${name}은 못 타요. 다음${low} ${name}이 ${fmt(x.pick.eta)} 뒤에 와요. 천천히 가셔도 돼요.`);
-    else o.push(`지금 오는${low} ${name}은 시간 안에 타기 어려워요.`);
+    const pn=x.pick&&x.pick.route?bn(x.pick.route):name;
+    if(!x.pool.length)return`지금 오는${low} ${jo(name,'이','가')} 없어요.`;
+    if(x.verdict==='ok')o.push(`지금 출발하면${low} ${pn} 탈 수 있어요.`);
+    else if(x.verdict==='tight')o.push(`${pn} 탈 수는 있는데 빠듯해요. 서두르세요.`);
+    else if(x.verdict==='next')o.push(`이번${low} ${jo(name,'은','는')} 못 타요. 다음${low} ${jo(pn,'이','가')} ${fmt(x.pick.eta)} 뒤에 와요. 천천히 가셔도 돼요.`);
+    else o.push(`지금 오는${low} ${jo(name,'은','는')} 시간 안에 타기 어려워요.`);
     o.push(`정류장까지 약 ${fmt(x.T)} 걸려요.`);
     if(x.pl.wait>1)o.push(`그중 신호 기다리는 시간이 ${fmt(x.pl.wait)}${iye(fmt(x.pl.wait))}.`);
     else if(x.sig?.pick?.color==='g')o.push('지금 보행 신호가 초록불이라 바로 건널 수 있어요.');
