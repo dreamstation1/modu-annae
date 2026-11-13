@@ -972,4 +972,90 @@ function iye(w){const c=String(w).charCodeAt(String(w).length-1)-0xAC00;return c
     if(params.get('agr'))S.route=params.get('agr');
     if(s)setTimeout(()=>openDrawer(s),600);
   }
+  const SIGC=new Map(),LIVE=new WeakMap();
+  async function sigNear(stop){
+    const k=stop.ars||stop.lat+','+stop.lng,o=SIGC.get(k);
+    if(o&&Date.now()-o.at<60000)return o.v;
+    let v=null;try{v=await readCrosswalk(stop);}catch(e){}
+    SIGC.set(k,{at:Date.now(),v});return v;
+  }
+  async function walkTo(from,stop,speed){
+    if(!from||!stop)return{sec:0,dist:0,wait:0};
+    const dist=hav(from.lat,from.lng,stop.lat,stop.lng)*1.25;
+    if(dist<20)return{sec:0,dist:0,wait:0};
+    const sig=dist>60?await sigNear(stop):null,len=sig&&sig.pick?15:0,cross=len/speed,reach=Math.max(0,dist-len)/speed;
+    const pl=len?plan(sig,reach,cross,len):{start:reach,wait:0,assumed:true};
+    return{sec:pl.start+cross,dist,wait:pl.wait,sig:len?sig:null,live:len&&!pl.assumed,sigErr:!!(sig&&!sig.pick),sig0:sig&&sig.inter?sig.inter.name+' ':''};
+  }
+  function lowBus(c){const v=typeof arrivalVehicleInfo==='function'?arrivalVehicleInfo(c.route,c.item,c.n):null;return!!v&&v.type==='저상';}
+  async function livePlanX(path,offsets){
+    offsets=offsets||path.liveOffset||{};
+    const p=P(),spd=p.speed||1.2,stopOf=n=>STOPS[STOP_BY_NODE.get(String(n))],legs=[],walks=[];
+    const f0=plannerSelectedOption(path.legs[0])||path.legs[0];
+    const w0=await walkTo(path.fromPlace||STOPS[path.fromIndex],stopOf(f0.data.route.nodes[f0.start]),spd);walks.push(w0);
+    let reach={sec:w0.sec+(p.careful?20:0),exact:false};
+    for(let i=0;i<path.legs.length;i++){
+      const base=path.legs[i],leg=plannerSelectedOption(base)||base,node=leg.data.route.nodes[leg.start],names=plannerLegNames(base);
+      const items=await plannerArrivalsAt(node);
+      let cands=plannerArrivalCandidates(items,names);if(p.low)cands=cands.filter(lowBus);
+      const minSec=reach?Math.max(0,reach.sec-(i?30:0)):0;
+      let auto=cands.findIndex(c=>c.sec>=minSec);if(auto<0)auto=cands.length;
+      const offset=offsets[i]||0,idx=cands.length?Math.max(0,Math.min(cands.length-1,auto+offset)):-1;
+      const best=idx>=0&&auto<cands.length||idx>=0&&offset<0?cands[idx]:null;
+      legs.push({base,leg,node,names,items,cands,best,idx,auto,offset,reach});
+      let r=best?await plannerReachAfter(base,best):null;
+      if(r&&i+1<path.legs.length){
+        const nx=plannerSelectedOption(path.legs[i+1])||path.legs[i+1];
+        const tw=await walkTo(stopOf(leg.data.route.nodes[leg.end]),stopOf(nx.data.route.nodes[nx.start]),spd);walks.push(tw);
+        r={...r,sec:r.sec+tw.sec};
+      }
+      reach=r;
+    }
+    const lastB=path.legs[path.legs.length-1],last=plannerSelectedOption(lastB)||lastB,lb=legs[legs.length-1];
+    const endStop=stopOf((lb&&lb.best?plannerLegOption(lb.base,lb.best.route):last).data.route.nodes[last.end]),dest=path.toPlace||STOPS[path.toIndex];
+    const endWalk=endStop&&dest?hav(endStop.lat,endStop.lng,dest.lat,dest.lng)*1.25/spd:0;
+    const total=reach?reach.sec+endWalk:null;
+    let chance=null;
+    if(legs.length>1){
+      const t=legs[1];
+      if(!legs[0].best||!t.reach)chance={text:'실시간 환승 정보 없음',level:'warn'};
+      else if(!t.best)chance={text:'현재 조회된 차량으로는 환승이 어려움 · 다음 차 정보를 기다리는 중',level:'bad'};
+      else{
+        const buffer=t.best.sec-t.reach.sec,b0=100/(1+Math.exp(-(buffer-60)/120));
+        const pen=buffer<=180?1:buffer<=300?.9:Math.max(.35,1-(buffer-300)/900),prob=Math.max(3,Math.min(98,Math.round(b0*pen)));
+        chance={prob,text:`환승 성공 추정 ${prob}% · 환승 여유 약 ${Math.max(0,Math.round(buffer/60))}분 (걷는 시간·신호 포함)`,level:prob>=75?'':prob>=40?'warn':'bad'};
+      }
+    }
+    const at=new Date();
+    LIVE.set(path,{total,walks,endWalk,first:legs[0]&&legs[0].best,at,p});
+    return{legs,chance,at};
+  }
+  function liveBanner(path){
+    const x=LIVE.get(path);if(!x)return'';
+    const p=x.p,w0=x.walks[0],sigWait=x.walks.reduce((s,w)=>s+(w.wait||0),0),o=[];
+    if(x.total==null)o.push(`<b>${p.low?'탈 수 있는 저상버스':'탈 수 있는 버스'}가 아직 안 잡혀서 도착 시각을 계산하지 못했어요.</b>`);
+    else{
+      const arr=new Date(x.at.getTime()+x.total*1000);
+      o.push(`<b>지금 출발하면 ${plannerClock(arr)} 도착 예상</b> (약 ${Math.max(1,Math.round(x.total/60))}분)`);
+    }
+    if(w0.dist){
+      let s=`정류장까지 걸어서 ${fmt(w0.sec)}`;
+      if(w0.sig&&w0.sig.pick){const c={g:'초록불',r:'빨간불',y:'깜빡이는 중'}[w0.sig.pick.color]||'';s+=` · ${esc(w0.sig.inter.name)} 횡단보도${c?' 지금 '+c:''}${w0.wait>1?`, 신호 기다림 ${fmt(w0.wait)} 포함`:''}`;}
+      else if(w0.sigErr)s+=` · 근처 ${esc(x.walks[0].sig0||'')}횡단보도 신호를 지금 못 받아서 신호 기다리는 시간은 빼고 계산했어요`;
+      if(x.first)s+=` → ${esc(x.first.route)}번은 ${fmt(x.first.sec)} 뒤 도착이라 ${x.first.sec>=w0.sec?'탈 수 있어요':'놓쳐요'}`;
+      o.push(s);
+    }
+    if(x.walks.length>1){const tw=x.walks.slice(1).reduce((s,w)=>s+w.sec,0);if(tw>0)o.push(`환승할 때 걷는 시간 ${fmt(tw)}`);}
+    if(sigWait>1&&!(w0.wait>1))o.push(`신호 기다리는 시간 ${fmt(sigWait)} 포함`);
+    o.push(`${esc(p.label)} 기준 걷는 속도 초속 ${p.speed}m${p.low?' · 저상버스만 골랐어요':''}${p.careful?' · 여유 20초 두고 계산':''}`);
+    return`<div class="ag-plan-live">${o.join('<br>')}</div>`;
+  }
+  if(typeof plannerLivePlan==='function'&&typeof plannerLiveSummary==='function'){
+    const origSummary=plannerLiveSummary;
+    plannerLivePlan=livePlanX;
+    plannerLiveSummary=async function(path){const r=await origSummary(path);r.html=liveBanner(path)+r.html;return r;};
+    const st=document.createElement('style');
+    st.textContent='.ag-plan-live{background:#eef6ff;border:1px solid #9cc3f5;border-radius:10px;padding:8px 10px;margin:0 0 8px;line-height:1.5;font-size:13px;color:#123}.ag-plan-live b{color:#0b4fa8}@media (prefers-color-scheme:dark){.ag-plan-live{background:#13263d;border-color:#2f5d93;color:#e6eef8}.ag-plan-live b{color:#8cc2ff}}';
+    document.head.appendChild(st);
+  }
 })();
