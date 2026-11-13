@@ -110,6 +110,41 @@
 .ag-pin.low{background:#29c5f6}
 .ag-pin.other{background:#e8edf3}
 .ag-pin.far{opacity:.75;transform:translate(-13px,-13px) scale(.85)}
+.ag-tabs button{font-size:.8em;padding:0 2px}
+#agFull{position:fixed;inset:0;z-index:3000;background:#000;color:#fff;display:none;flex-direction:column;align-items:center;justify-content:center;padding:20px;text-align:center}
+#agFull.on{display:flex}
+#agFull.card{background:#fff;color:#000}
+#agFull .x{position:absolute;top:12px;right:12px;height:46px;width:46px;font-size:20px;border-radius:12px}
+.ag-card{font-size:min(11vw,64px);font-weight:900;line-height:1.3;word-break:keep-all}
+.ag-card small{display:block;font-size:.42em;color:#555;margin-top:16px}
+.ag-led{width:min(96vw,900px);background:#050505;border:10px solid #222;border-radius:10px;padding:14px 16px;font-family:'Courier New',monospace;color:#ff9a00;text-shadow:0 0 6px #ff7a00;position:relative;text-align:left}
+.ag-led:after{content:'';position:absolute;inset:0;background:radial-gradient(circle,transparent 55%,rgba(5,5,5,.8) 62%) 0 0/5px 5px;pointer-events:none}
+.ag-led .h{display:flex;justify-content:space-between;gap:10px;color:#3f6;text-shadow:0 0 6px #2c5;font-size:min(5vw,30px);font-weight:900;margin-bottom:6px}
+.ag-led .row{display:grid;grid-template-columns:1.4em 1fr auto;gap:.4em;font-size:min(8.5vw,54px);font-weight:900;padding:.06em 0}
+.ag-led .row.mine{color:#ff2b2b;text-shadow:0 0 8px #f22}
+.ag-led .row.blink{animation:agBlink 1s steps(2) infinite}
+@keyframes agBlink{50%{opacity:.15}}
+.ag-led .note{overflow:hidden;white-space:nowrap;color:#3f6;text-shadow:0 0 6px #2c5;font-size:min(6vw,38px);font-weight:900;border-top:2px solid #222;margin-top:8px;padding-top:6px}
+.ag-led .note span{display:inline-block;padding-left:100%;animation:agMarq 12s linear infinite}
+@keyframes agMarq{to{transform:translateX(-100%)}}
+.ag-care{display:grid;gap:10px}
+.ag-box{background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:11px 12px}
+.ag-box h4{margin:0 0 6px;font-size:.95em}
+.ag-box p{margin:4px 0;font-size:.84em;line-height:1.55;color:var(--muted)}
+.ag-box p b{color:var(--text)}
+.ag-box select,.ag-box input{width:100%;height:38px;margin-top:6px;border-radius:9px;background:var(--panel);color:var(--text);border:1px solid var(--border);padding:0 8px;font:inherit;box-sizing:border-box}
+.ag-box .ag-btns{margin:8px 0 0}
+.ag-box button.on{background:#ffd400;color:#111;border-color:#ffd400}
+.ag-big{font-size:2.1em;font-weight:900;line-height:1.25;text-align:center;padding:8px 0}
+.ag-big small{display:block;font-size:.42em;color:var(--muted);font-weight:700;margin-top:4px}
+.ag-cards{display:grid;gap:6px;margin-top:6px}
+.ag-cards button{height:auto;min-height:40px;padding:8px 10px;text-align:left;font-size:.86em;line-height:1.4}
+.ag-low{list-style:none;padding:0;margin:6px 0 0;display:grid;gap:5px}
+.ag-low li{display:flex;justify-content:space-between;gap:8px;font-size:.86em;padding:6px 9px;border-radius:9px;background:var(--panel);border-left:4px solid var(--border)}
+.ag-low li.l{border-left-color:#29c5f6}.ag-low li.n{opacity:.55}
+.ag-ride{font-size:1.05em;font-weight:850;line-height:1.5;color:var(--text);margin:6px 0}
+.ag-cap{font-size:min(8vw,44px);font-weight:800;line-height:1.4;max-height:75vh;overflow:auto;width:100%;text-align:left}
+.ag-cap i{color:#888;font-style:normal}
 @media(max-width:700px){#agentDrawer{top:auto;height:72%;width:100%;border-left:0;border-top:1px solid var(--border);border-radius:16px 16px 0 0;transform:translateY(104%)}#agentDrawer.open{transform:none}}
 `;
   document.head.appendChild(css);
@@ -124,7 +159,7 @@
       <div class="ag-row">내 버스 <select id="agRoute"><option value="">선택 안 함</option></select><span id="agClock" style="margin-left:auto"></span></div>
     </div>
     <div class="ag-tabs" role="tablist">
-      <button data-t="queue" class="on">도착 순서</button><button data-t="catch">탈 수 있을까?</button><button data-t="chat">물어보기</button>
+      <button data-t="queue" class="on">도착 순서</button><button data-t="catch">탈 수 있을까?</button><button data-t="chat">물어보기</button><button data-t="care" id="agCareTab">맞춤</button>
     </div>
     <div class="ag-body" id="agBody"></div>
     <form class="ag-ask" id="agAsk" hidden><input id="agQ" autocomplete="off" placeholder="예) 143번 몇 번째에 서 있어?"><button type="button" id="agMic" title="말로 묻기">🎙</button><button type="submit">보내기</button></form>`;
@@ -149,6 +184,8 @@
     drawer.querySelectorAll('.ag-prof button').forEach(b=>b.classList.toggle('on',b.dataset.p===k));
     drawer.classList.toggle('big',!!P().big);
     const sp=$('agSpeed');if(sp)sp.value=P().speed;
+    $('agCareTab').textContent=(CARE[k]||CARE.normal).tab;
+    S.lowCache=null;
     render();
   }
 
@@ -159,7 +196,7 @@
     setProfile(S.profile);
     refresh(true);
     clearInterval(S.timer);
-    S.timer=setInterval(()=>{if(S.open&&document.visibilityState==='visible')refresh(false);},20000);
+    S.timer=setInterval(()=>{if(S.open&&document.visibilityState==='visible'&&(S.watch||S.full==='led'||Date.now()-(S.queue?S.queue.at:0)>19000))refresh(false);},10000);
   }
   function closeDrawer(){
     S.open=false;drawer.classList.remove('open');clearInterval(S.timer);
@@ -382,11 +419,14 @@ function iye(w){const c=String(w).charCodeAt(String(w).length-1)-0xAC00;return c
         if(mineIn&&!S.lastMineFirst)alertUser(q.group.indexOf(mine)+1);
       }
       S.lastOrder=order;S.lastMineFirst=!!mineIn;
+      checkWatch(q);
+      if(S.full==='led')drawFull();
       $('agClock').textContent=new Date(q.at).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
       drawMap(q);
       if(force&&isFinite(S.stop.lat)){const pts=[[S.stop.lat,S.stop.lng],...q.list.filter(v=>isFinite(v.lat)&&(q.group.includes(v)||v.eta<=120)).map(v=>[v.lat,v.lng])];const mob=innerWidth<768,o={paddingTopLeft:[50,50],paddingBottomRight:mob?[50,drawer.offsetHeight+30]:[drawer.offsetWidth+50,50],maxZoom:17};map.fitBounds(pts.length>1?pts:[pts[0],pts[0]],o);}
     }catch(e){$('agClock').textContent='갱신 실패';}
-    if(S.tab!=='catch'||force)render();
+    const typing=S.tab==='care'&&document.activeElement&&$('agBody').contains(document.activeElement)&&/INPUT|SELECT/.test(document.activeElement.tagName);
+    if((S.tab!=='catch'&&!typing)||force)render();
   }
 
   function bayHtml(q){
@@ -427,6 +467,8 @@ function iye(w){const c=String(w).charCodeAt(String(w).length-1)-0xAC00;return c
       $('agRun').onclick=runCatch;
       $('agGps').onclick=()=>navigator.geolocation?.getCurrentPosition(p=>{$('agWalk').value=Math.round(hav(p.coords.latitude,p.coords.longitude,S.stop.lat,S.stop.lng)*1.3);runCatch();},()=>{},{enableHighAccuracy:true,timeout:8000});
       const s2=$('agSay2');if(s2)s2.onclick=()=>speak($('agVerdict').dataset.say||'');
+    }else if(S.tab==='care'){
+      renderCare(body);
     }else{
       body.innerHTML=`<div class="ag-chat" id="agChat"></div>
         <div class="ag-sugg">${['지금 몇 번째에 서 있어?','지금 가면 탈 수 있어?','저상버스 언제 와?','덜 붐비는 버스는?'].map(t=>`<button type="button">${t}</button>`).join('')}</div>
@@ -566,6 +608,268 @@ function iye(w){const c=String(w).charCodeAt(String(w).length-1)-0xAC00;return c
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   if(SR){const rec=new SR();rec.lang='ko-KR';rec.onresult=e=>ask(e.results[0][0].transcript);$('agMic').onclick=()=>{speechSynthesis.cancel();rec.start();};}
   else $('agMic').style.display='none';
+
+  const CARE={
+    normal:{tab:'🧭 편의',parts:['watch','pick','alight','led']},
+    blind:{tab:'🦯 도우미',parts:['watch','guide','alight','card']},
+    deaf:{tab:'🧏 보는 안내',parts:['led','watch','card','caption','alight']},
+    wheel:{tab:'🦽 휠체어',parts:['lowline','card','watch','alight','led']},
+    elder:{tab:'🧓 쉬운 안내',parts:['simple','watch','alight','card','share']},
+    stroller:{tab:'👶 편한 버스',parts:['pick','lowline','card','alight','share']}
+  };
+  Object.assign(S,{watch:false,watchSeen:new Set(),watchMsg:'',full:null,ride:null,rideTimer:null,alightIdx:'',alightName:'',guide:null,lowCache:null,ledNotice:'',cardText:'',toast:''});
+
+  const full=document.createElement('div');full.id='agFull';full.setAttribute('role','dialog');
+  full.innerHTML='<button class="x" type="button" aria-label="닫기">✕</button><div id="agFullIn" style="width:100%;display:flex;flex-direction:column;align-items:center"></div>';
+  document.body.appendChild(full);
+  full.querySelector('.x').onclick=closeFull;
+  function keepAwake(on){
+    if(on&&!S.wake&&navigator.wakeLock)navigator.wakeLock.request('screen').then(w=>{S.wake=w;}).catch(()=>{});
+    if(!on&&S.wake&&!S.watch&&!S.ride&&!S.full){S.wake.release().catch(()=>{});S.wake=null;}
+  }
+  function openFull(kind,data){S.full=kind;S.fullData=data;full.classList.add('on');full.classList.toggle('card',kind==='card');drawFull();keepAwake(true);}
+  function closeFull(){
+    S.full=null;full.classList.remove('on','card');
+    if(S.rec){const r=S.rec;S.rec=null;try{r.stop();}catch(e){}}
+    keepAwake(false);
+  }
+  function drawFull(){
+    const box=$('agFullIn');
+    if(S.full==='card')box.innerHTML=`<div class="ag-card">${esc(S.fullData)}<small>${S.route?esc(bn(S.route))+' 타요 · ':''}${esc(S.stop?S.stop.name:'')}</small></div>`;
+    else if(S.full==='led')box.innerHTML=ledHtml();
+    else if(S.full==='cap')box.innerHTML=`<div class="ag-cap" id="agCap">${S.capText||'<i>말소리를 듣고 있어요…</i>'}</div>`;
+  }
+
+  function ledNote(){
+    const q=S.queue;
+    if(S.ledNotice)return S.ledNotice;
+    const m=q&&myBus(q);
+    if(m&&q.group.includes(m))return`${bn(m.route)} ${ord(q.group.indexOf(m)+1)} 자리에 서요`;
+    const b=q&&q.list.find(v=>v.bunchNext);
+    if(b)return`${bn(b.route)} 두 대가 붙어 와요 · 뒤차를 타도 돼요`;
+    return'동시에 들어오는 버스는 ①②③ 순서로 서요';
+  }
+  function ledHtml(){
+    const q=S.queue;if(!q)return'<div class="ag-led"><div class="h">불러오는 중</div></div>';
+    const rows=q.group.concat(q.list.filter(v=>!q.group.includes(v)&&!v.leaving)).slice(0,5),mine=myBus(q);
+    const now=new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});
+    return`<div class="ag-led"><div class="h"><span>${esc(q.stop.name)}</span><span>${now}</span></div>`+
+      (rows.map(v=>{const gi=q.group.indexOf(v);return`<div class="row${v===mine?' mine':''}${v===mine&&(v.atStop||gi>=0)?' blink':''}"><span>${gi>=0?'①②③④⑤⑥'[gi]||'·':'·'}</span><span>${esc(v.route)}${v.low?'<small style="color:#29c5f6;text-shadow:0 0 6px #29c5f6;font-size:.5em"> 저상</small>':''}</span><span>${v.atStop?'도착':v.eta<60?'곧':Math.round(v.eta/60)+'분'}</span></div>`;}).join('')||'<div class="row"><span></span><span>운행 정보 없음</span><span></span></div>')+
+      `<div class="note"><span>${esc(ledNote())}</span></div></div><div style="color:#aaa;font-size:14px;margin-top:10px">①②③ 정류장에 서는 순서 · 파란 글씨 = 저상버스 · 빨간 줄 = 내 버스</div>`;
+  }
+  async function boardSend(text){
+    const base=(lsGet('agentBoard')||'').trim().replace(/\/+$/,'');if(!base||!S.stop)return'';
+    try{
+      await fetch(base+'/api/board/set_station',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ars_id:S.stop.ars,name:S.stop.name})});
+      const r=await fetch(base+'/api/board/notice',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:text.slice(0,48)})});
+      const j=await r.json();return j.ok?'정류장 전광판에도 띄웠어요.':'전광판 서버는 연결됐지만 전광판이 응답하지 않아요.';
+    }catch(e){return'전광판 서버에 연결하지 못했어요.';}
+  }
+
+  function checkWatch(q){
+    if(!S.watch)return;
+    const m=myBus(q);if(!m)return;
+    const gi=q.group.indexOf(m),stage=m.atStop?3:gi>=0?2:m.eta<=60?1:m.eta<=180?0:-1;
+    if(stage<0||S.watchSeen.has(m.vehId+':'+stage))return;
+    for(let k=stage;k<=3;k++)if(k>stage&&S.watchSeen.has(m.vehId+':'+k))return;
+    S.watchSeen.add(m.vehId+':'+stage);
+    const w=bn(m.route),p=P();
+    const t=[`${jo(w,'이','가')} 약 3분 뒤에 와요. 정류장으로 갈 준비를 하세요.`,`${jo(w,'이','가')} 1분 안에 와요.`,`${jo(w,'이','가')} 지금 들어와요. ${ord(gi+1)}에 서요.`,`${w} 정류장에 섰어요. ${ord(gi+1)} 버스예요.`][stage]+(stage>=2&&p.low?' 가운데 문 경사판 쪽으로 가세요.':'');
+    S.watchMsg=t;speak(t);alertUser(stage>=2?gi+1:1);
+    if(stage>=2&&(p.low||p.lowPref)){S.ledNotice=`${w} ${p.low?'휠체어':'유모차'} 탑승 대기 · 경사판 부탁드려요`;boardSend(S.ledNotice);}
+  }
+
+  function routeObj(name){const m=S.queue&&S.queue.list.find(v=>v.route===name);return(m&&ROUTE_BY_ID.get(m.routeId))||ROUTES.find(x=>x.name===name)||null;}
+  function alightOptions(){
+    const r=S.route&&routeObj(S.route);if(!r||!r.nodes||!S.stop)return null;
+    const m=S.queue&&S.queue.list.find(v=>v.route===S.route);
+    const i=stopIdx(r,S.stop,m?m.staOrd:1);if(i<0)return null;
+    const opts=[];for(let j=i+1;j<r.nodes.length&&opts.length<70;j++){const s=NODE.get(String(r.nodes[j]));if(s)opts.push([j,s.name]);}
+    return{route:r,from:i,opts};
+  }
+  async function startRide(){
+    const a=alightOptions(),dest=+S.alightIdx;if(!a||!dest)return;
+    const name=(NODE.get(String(a.route.nodes[dest]))||{}).name||'';
+    const m=S.queue&&myBus(S.queue);
+    S.ride={route:a.route,from:a.from,dest,destName:name,vehId:m&&(m.atStop||S.queue.group.includes(m))?m.vehId:'',said:'',msg:'버스 위치를 찾는 중이에요…',done:false};
+    S.alightName=name;keepAwake(true);
+    clearInterval(S.rideTimer);render();await trackRide();
+    S.rideTimer=setInterval(trackRide,20000);
+  }
+  function stopRide(){clearInterval(S.rideTimer);S.ride=null;keepAwake(false);render();}
+  function rideUpd(){const e=$('agRide');if(e)e.textContent=S.ride?S.ride.msg:'';}
+  async function trackRide(){
+    const R=S.ride;if(!R||R.done)return;
+    let pos=[];
+    try{pos=await fetchBusPositions(R.route.id);}catch(e){R.msg='버스 위치를 불러오지 못했어요. 20초 뒤 다시 확인해요.';rideUpd();return;}
+    let v=R.vehId&&pos.find(p=>String(p.vehId)===R.vehId);
+    if(!v){
+      const near=pos.map(p=>({p,c:parseInt(p.sectOrd,10)-1})).filter(o=>o.c>=R.from-1&&o.c<=R.from).sort((a,b)=>b.c-a.c)[0];
+      if(near){v=near.p;R.vehId=String(v.vehId);}
+    }
+    if(!v){R.msg='탄 버스를 아직 못 찾았어요. 버스에 타면 자동으로 찾아요.';rideUpd();return;}
+    const cur=parseInt(v.sectOrd,10)-1,at=String(v.stopFlag)==='1',left=R.dest-cur;
+    const next=(NODE.get(String(R.route.nodes[cur+1]))||{}).name||'';
+    let msg,level=0;
+    if(cur>R.dest||(cur===R.dest&&!at)){msg='내릴 정류장을 지났어요. 다음 정류장에서 내려서 반대편 버스를 타세요.';level=3;R.done=true;}
+    else if(cur===R.dest){msg=`지금 ${jo(R.destName,'이에요','예요')}. 내리세요.`;level=3;R.done=true;}
+    else if(left<=1){msg=`다음 정류장이 ${jo(R.destName,'이에요','예요')}. 하차 벨을 누르세요.`;level=2;}
+    else msg=`${R.destName}까지 ${left}정거장 남았어요. 다음 정류장은 ${jo(next,'이에요','예요')}.`;
+    R.msg=msg;rideUpd();
+    if(msg!==R.said&&(left<=3||!R.said)){R.said=msg;speak(msg);if(level)alertUser(level);}
+    if(R.done){clearInterval(S.rideTimer);}
+  }
+
+  function startGuide(){
+    if(S.guide){stopGuide();return;}
+    if(!navigator.geolocation||!S.stop)return;
+    const go=()=>{
+      const G={heading:null,last:'',lastAt:0,msg:'내 위치를 찾는 중이에요…'};
+      G.onOri=e=>{const h=e.webkitCompassHeading!=null?e.webkitCompassHeading:(e.absolute&&e.alpha!=null?360-e.alpha:null);if(h!=null)G.heading=h;};
+      addEventListener('deviceorientationabsolute',G.onOri);addEventListener('deviceorientation',G.onOri);
+      G.watch=navigator.geolocation.watchPosition(p=>guideStep(p.coords),()=>{G.msg='위치를 알 수 없어요. 위치 권한을 켜 주세요.';guideUpd();},{enableHighAccuracy:true,maximumAge:2000,timeout:15000});
+      S.guide=G;keepAwake(true);render();
+    };
+    if(window.DeviceOrientationEvent&&typeof DeviceOrientationEvent.requestPermission==='function')DeviceOrientationEvent.requestPermission().then(go,go);else go();
+  }
+  function stopGuide(){
+    const G=S.guide;if(!G)return;
+    navigator.geolocation.clearWatch(G.watch);removeEventListener('deviceorientationabsolute',G.onOri);removeEventListener('deviceorientation',G.onOri);
+    S.guide=null;keepAwake(false);render();
+  }
+  function guideUpd(){const e=$('agGuideMsg');if(e&&S.guide)e.textContent=S.guide.msg;}
+  function guideStep(c){
+    const G=S.guide;if(!G||!S.stop)return;
+    const d=hav(c.latitude,c.longitude,S.stop.lat,S.stop.lng),b=bearingDeg(c.latitude,c.longitude,S.stop.lat,S.stop.lng);
+    let dir;
+    if(G.heading!=null){const h=Math.round(((b-G.heading+360)%360)/30)%12;dir=h===0?'바로 앞':`${h}시 방향`;}
+    else dir=['북','북동','동','남동','남','남서','서','북서'][Math.round(b/45)%8]+'쪽';
+    const near=d<=15,msg=near?'정류장에 거의 다 왔어요. 점자블록을 따라 승강장으로 가세요.':`${S.stop.name} 정류장은 ${dir}, 약 ${Math.max(5,Math.round(d/5)*5)}미터예요.`;
+    G.msg=msg;guideUpd();
+    const now=Date.now();
+    if((msg!==G.last&&now-G.lastAt>8000)||now-G.lastAt>20000){G.last=msg;G.lastAt=now;speak(msg);if(near&&navigator.vibrate)navigator.vibrate([400,150,400]);}
+  }
+
+  async function loadLowLine(force){
+    const box=$('agLow');if(!box)return;
+    if(!S.route){box.innerHTML='<p>위의 "내 버스"를 고르면 다음 저상버스가 몇 정거장 전에 있는지 보여 드려요.</p>';return;}
+    if(!force&&S.lowCache&&S.lowCache.route===S.route&&Date.now()-S.lowCache.at<60000){box.innerHTML=S.lowCache.html;return;}
+    const r=routeObj(S.route);if(!r){box.innerHTML='<p>노선 정보를 찾지 못했어요.</p>';return;}
+    const m=S.queue&&S.queue.list.find(v=>v.route===S.route),i=stopIdx(r,S.stop,m?m.staOrd:1);
+    if(i<0){box.innerHTML='<p>이 정류장을 노선에서 찾지 못했어요.</p>';return;}
+    box.innerHTML='<p>버스 위치를 불러오는 중…</p>';
+    let pos=[];try{pos=await fetchBusPositions(r.id);}catch(e){box.innerHTML='<p>버스 위치를 불러오지 못했어요.</p>';return;}
+    const rows=pos.map(p=>({veh:String(p.vehId),c:parseInt(p.sectOrd,10)-1,low:String(p.busType)==='1',cong:String(p.congetion||p.congestion||''),at:String(p.stopFlag)==='1'}))
+      .filter(o=>o.c>=0&&(o.c<i||(o.c===i&&o.at))&&i-o.c<=45).map(o=>{const q=S.queue&&S.queue.list.find(v=>v.vehId===o.veh);return{...o,away:i-o.c,eta:q?q.eta:null};})
+      .sort((a,b)=>a.away-b.away).slice(0,7);
+    const fl=rows.findIndex(o=>o.low),lows=rows.filter(o=>o.low);
+    const when=o=>o.away===0?'정류장에 있음':o.eta!=null?`${o.away}정거장 전 · ${fmt(o.eta)}`:`${o.away}정거장 전 · 약 ${Math.max(1,Math.round(o.away*1.5))}분`;
+    let say;
+    if(!rows.length)say=`지금 ${bn(S.route)}이 이 정류장 쪽으로 오고 있지 않아요.`;
+    else if(fl<0)say=`가까이 오는 ${bn(S.route)} ${rows.length}대 중에 저상버스가 없어요. 다른 노선을 알아보는 게 좋아요.`;
+    else{const f=rows[fl],skip=rows.slice(0,fl).length;say=`다음 저상 ${bn(S.route)}은 ${when(f).replace(' · ',', ')}예요.`+(skip?` 그 앞에 오는 일반버스 ${skip}대는 보내고 기다리세요.`:'')+(lows[1]?` 그다음 저상버스는 ${lows[1].away}정거장 전이에요.`:'');}
+    const html=`<p><b>${esc(say)}</b></p><ul class="ag-low">`+rows.map(o=>`<li class="${o.low?'l':'n'}"><span>${o.low?'♿ 저상':'일반'}${CONG[o.cong]?' · '+CONG[o.cong]:''}</span><span>${when(o)}</span></li>`).join('')+`</ul>`;
+    S.lowCache={route:S.route,at:Date.now(),html,say};box.innerHTML=html;
+  }
+
+  function pickSentence(){
+    const q=S.queue,r=S.route;if(!q)return'';
+    if(!r)return'위의 "내 버스"를 고르면 다음 두 대 중 더 편한 차를 골라 드려요.';
+    const pool=q.list.filter(v=>v.route===r&&!v.leaving).slice(0,2);
+    if(!pool.length)return`${bn(r)}은 지금 오는 버스가 없어요.`;
+    const need=S.profile==='stroller'||S.profile==='elder';
+    const score=v=>(need&&!v.low?3:0)+((+v.cong||4)-3)*(S.profile==='normal'?1:1.5);
+    const first=pool[0],best=pool.slice().sort((a,b)=>score(a)-score(b)||a.eta-b.eta)[0];
+    const desc=v=>`${v.low?'저상':'일반'}·${CONG[v.cong]||'혼잡도 모름'}`;
+    if(best===first||best.eta-first.eta>900)return`${first.atStop?'지금 정류장에 있는':fmt(first.eta)+' 뒤에 오는'} ${bn(first.route)}을 타세요(${desc(first)}).`+(pool[1]&&pool[1]!==first?` 다음 차는 ${fmt(pool[1].eta)} 뒤(${desc(pool[1])})예요.`:'');
+    return`먼저 오는 차(${fmt(first.eta)} 뒤)는 ${desc(first)} 상태예요. ${fmt(best.eta-first.eta)} 더 기다리면 ${desc(best)}인 다음 차를 탈 수 있어요.`;
+  }
+
+  function simpleHtml(){
+    const q=S.queue,m=q&&(myBus(q)||(!S.route&&q.list.find(v=>!v.leaving)));
+    if(!m)return`<div class="ag-big">${S.route?esc(bn(S.route)):'버스를 고르세요'}<small>${S.route?'지금 오는 차가 없어요':'위의 "내 버스"에서 고르면 크게 보여 드려요'}</small></div>`;
+    const gi=q.group.indexOf(m),seat=m.cong==='3'?'자리 여유':m.cong==='4'?'자리 조금':m.cong>='5'?'자리 없음':'';
+    S.simpleSay=`${bn(m.route)}, ${m.atStop?'지금 정류장에 있어요':fmt(m.eta)+' 뒤에 와요'}.`+(gi>=0?` ${ord(gi+1)}에 서요.`:'')+(seat?` ${seat}.`:'');
+    return`<div class="ag-big">${esc(bn(m.route))}<br>${m.atStop?'도착':esc(fmt(m.eta))+' 뒤'}<small>${[gi>=0?ord(gi+1)+' 자리':'',seat,m.low?'저상':''].filter(Boolean).join(' · ')}</small></div>`;
+  }
+  async function shareNow(){
+    const q=S.queue,m=q&&myBus(q);
+    const t=`[모두의 안내] 지금 ${S.stop.name} 정류장이에요.`+(m?` ${bn(m.route)} ${m.atStop?'버스가 도착해서 타요':fmt(m.eta)+' 뒤에 오는 버스를 타요'}.`:'')+(S.ride||S.alightName?` ${S.alightName}에서 내려요.`:'');
+    try{if(navigator.share){await navigator.share({text:t});return;}await navigator.clipboard.writeText(t);S.toast='보낼 글을 복사했어요. 문자에 붙여 넣으세요.';}
+    catch(e){S.toast='';}
+    render();
+  }
+  function startCaption(){
+    const SRc=window.SpeechRecognition||window.webkitSpeechRecognition;
+    S.capLines=[];
+    if(!SRc){S.capText='<i>이 브라우저는 받아쓰기를 지원하지 않아요. 크롬에서 열어 주세요.</i>';openFull('cap');return;}
+    S.capText='';openFull('cap');
+    const r=new SRc();r.lang='ko-KR';r.continuous=true;r.interimResults=true;S.rec=r;
+    r.onresult=e=>{
+      let fin='',tmp='';
+      for(let k=e.resultIndex;k<e.results.length;k++){const t=e.results[k][0].transcript;if(e.results[k].isFinal)fin+=t;else tmp+=t;}
+      if(fin.trim())S.capLines.push(fin.trim());S.capLines=S.capLines.slice(-6);
+      S.capText=S.capLines.map(esc).join('<br>')+(tmp?'<br><i>'+esc(tmp)+'</i>':'');
+      const c=$('agCap');if(c){c.innerHTML=S.capText||'<i>…</i>';c.scrollTop=1e9;}
+    };
+    r.onend=()=>{if(S.rec===r)try{r.start();}catch(e){}};
+    try{r.start();}catch(e){}
+  }
+
+  function cardTexts(){
+    const d=S.alightName;
+    const T={
+      normal:[d?`${d} 가나요?`:'이 버스 어디로 가나요?'],
+      blind:['시각장애인이에요. 버스 번호를 말씀해 주세요.',d?`${d}에서 내려요. 도착하면 말씀해 주세요.`:''],
+      deaf:['저는 청각장애인이에요. 글로 보여 드릴게요.',d?`${d}에서 내려요. 도착하면 손짓으로 알려 주세요.`:'',d?`${d} 가나요?`:'','천천히 출발해 주세요.'],
+      wheel:['휠체어 탑승합니다. 경사판을 내려 주세요.',d?`${d}에서 내려요. 경사판 부탁드려요.`:'','휠체어 자리를 비워 주세요.'],
+      elder:['천천히 출발해 주세요.',d?`${d} 가나요?`:'',d?`${d}에서 내려요. 알려 주세요.`:''],
+      stroller:['유모차 탑승합니다. 가운데 문으로 탈게요.','임산부예요. 자리 양보 부탁드려요.',d?`${d}에서 내려요.`:'']
+    };
+    return(T[S.profile]||T.normal).filter(Boolean);
+  }
+
+  function renderCare(body){
+    const c=CARE[S.profile]||CARE.normal,p=P(),h=[],R=bn(S.route||'');
+    const how=p.mute?'화면 깜빡임과 진동':p.voice?'음성과 진동(진동 횟수 = 몇 번째)':'소리와 진동';
+    for(const part of c.parts){
+      if(part==='watch')h.push(`<div class="ag-box"><h4>🔔 내 버스 도착 알림</h4><p>${S.route?`${esc(jo(R,'이','가'))} 3분 전, 1분 전, 정류장에 들어올 때 ${how}으로 알려 드려요. 켜 두면 화면이 꺼지지 않아요.`:'위의 "내 버스"를 먼저 골라 주세요.'}</p>${S.watch&&S.watchMsg?`<p><b>${esc(S.watchMsg)}</b></p>`:''}<div class="ag-btns"><button type="button" id="agWatch" class="${S.watch?'on':'pri'}"${S.route?'':' disabled'}>${S.watch?'알림 끄기':'알림 켜기'}</button></div></div>`);
+      else if(part==='guide')h.push(`<div class="ag-box"><h4>🧭 정류장 찾아가기</h4><p>휴대폰을 들고 있으면 정류장이 몇 시 방향, 몇 미터인지 계속 말해 드려요.</p>${S.guide?`<p><b id="agGuideMsg">${esc(S.guide.msg)}</b></p>`:''}<div class="ag-btns"><button type="button" id="agGuide" class="${S.guide?'on':'pri'}">${S.guide?'안내 멈추기':'길 안내 시작'}</button></div></div>`);
+      else if(part==='alight'){
+        const a=!S.ride&&alightOptions();
+        h.push(`<div class="ag-box"><h4>🛎 내릴 곳 알림</h4>`+(S.ride?`<div class="ag-ride" id="agRide">${esc(S.ride.msg)}</div><p>${esc(S.ride.destName)}에서 내려요. 3정거장 전부터 ${how}으로 알려 드려요.</p><div class="ag-btns"><button type="button" id="agRideStop">알림 끝내기</button></div>`
+          :!S.route?'<p>위의 "내 버스"를 먼저 골라 주세요.</p>':!a?'<p>이 노선의 정류장 정보를 찾지 못했어요.</p>'
+          :`<p>내릴 정류장을 고르고, 버스에 타면 버튼을 눌러 주세요.</p><select id="agDest"><option value="">내릴 정류장 선택</option>${a.opts.map(([j,n],k)=>`<option value="${j}"${String(j)===String(S.alightIdx)?' selected':''}>${k+1}. ${esc(n)}</option>`).join('')}</select><div class="ag-btns"><button type="button" class="pri" id="agRide"${S.alightIdx?'':' disabled'}>버스 탔어요 · 알림 시작</button></div>`)+`</div>`);
+      }
+      else if(part==='card')h.push(`<div class="ag-box"><h4>🪧 기사님께 보여주기</h4><p>누르면 화면 가득 크게 보여요. 말하기 어려울 때 기사님이나 주변 사람에게 보여 주세요.</p><div class="ag-cards">${cardTexts().map((t,k)=>`<button type="button" data-card="${k}">${esc(t)}</button>`).join('')}</div><input id="agCardIn" placeholder="직접 쓰기 (예: 다음 정류장에서 내려요)" value="${esc(S.cardText)}"><div class="ag-btns"><button type="button" id="agCardGo">크게 보기</button></div></div>`);
+      else if(part==='led')h.push(`<div class="ag-box"><h4>🟧 정류장 LED 전광판</h4><p>정류장 LED 전광판처럼 도착 순서를 크게 보여 줘요. 내 버스는 빨간색으로 깜빡여요.</p><div class="ag-btns"><button type="button" class="pri" id="agLed">전광판 크게 보기</button></div><p>실제 전광판 서버와 연결하기 (선택)</p><input id="agBoard" placeholder="예) http://192.168.0.10:5000" value="${esc(lsGet('agentBoard')||'')}">${S.boardMsg?`<p>${esc(S.boardMsg)}</p>`:''}</div>`);
+      else if(part==='caption')h.push(`<div class="ag-box"><h4>💬 주변 말소리 글자로 보기</h4><p>기사님 말이나 정류장·차내 안내방송을 큰 글자로 바꿔 보여 줘요.</p><div class="ag-btns"><button type="button" class="pri" id="agCap">받아쓰기 시작</button></div></div>`);
+      else if(part==='lowline')h.push(`<div class="ag-box"><h4>♿ 다음 저상버스</h4><div id="agLow"></div><div class="ag-btns"><button type="button" id="agLowRe">↻ 다시 보기</button>${p.mute?'':'<button type="button" id="agLowSay">🔊 듣기</button>'}</div></div>`);
+      else if(part==='pick')h.push(`<div class="ag-box"><h4>🙂 편하게 탈 차 고르기</h4><p><b>${esc(pickSentence())}</b></p><p>${S.profile==='stroller'?'저상버스이고 덜 붐비는 차를 먼저 골라요.':'덜 붐비는 차를 먼저 골라요.'}</p></div>`);
+      else if(part==='simple')h.push(`<div class="ag-box">${simpleHtml()}<div class="ag-btns" style="justify-content:center"><button type="button" class="pri" id="agSimpleSay" style="height:48px;font-size:1.05em">🔊 다시 듣기</button></div></div>`);
+      else if(part==='share')h.push(`<div class="ag-box"><h4>📨 가족에게 알리기</h4><p>지금 정류장과 탈 버스, 내릴 곳을 문자나 카톡으로 보내요.</p><div class="ag-btns"><button type="button" id="agShare">보내기</button></div>${S.toast?`<p>${esc(S.toast)}</p>`:''}</div>`);
+    }
+    body.innerHTML=`<div class="ag-care">${h.join('')}</div>`;
+    const on=(id,f)=>{const e=$(id);if(e)e.onclick=f;};
+    on('agWatch',()=>{S.watch=!S.watch;S.watchSeen=new Set();S.watchMsg='';keepAwake(S.watch);if(S.watch){speak(`${jo(R,'을','를')} 기다릴게요. 가까이 오면 알려 드릴게요.`);refresh(false);}else{S.ledNotice='';}render();});
+    on('agGuide',startGuide);
+    const dest=$('agDest');if(dest)dest.onchange=e=>{S.alightIdx=e.target.value;S.alightName=S.alightIdx?(NODE.get(String(alightOptions().route.nodes[+S.alightIdx]))||{}).name||'':'';render();};
+    on('agRide',startRide);on('agRideStop',stopRide);
+    body.querySelectorAll('[data-card]').forEach(b=>b.onclick=()=>{
+      const t=b.textContent;openFull('card',t);
+      if(/경사판|유모차|휠체어/.test(t)&&S.route){S.ledNotice=`${bn(S.route)} ${/유모차/.test(t)?'유모차':'휠체어'} 탑승 대기 · ${t}`;boardSend(S.ledNotice).then(m=>{S.boardMsg=m;});}
+    });
+    const ci=$('agCardIn');if(ci)ci.oninput=e=>{S.cardText=e.target.value;};
+    on('agCardGo',()=>{if(S.cardText.trim())openFull('card',S.cardText.trim());});
+    on('agLed',()=>openFull('led'));
+    const bd=$('agBoard');if(bd)bd.onchange=async e=>{lsSet('agentBoard',e.target.value.trim());S.boardMsg=e.target.value.trim()?await boardSend(`${S.stop.name} 모두의 안내 연결`):'';render();};
+    on('agCap',startCaption);
+    if($('agLow'))loadLowLine(false);
+    on('agLowRe',()=>loadLowLine(true));
+    on('agLowSay',()=>speak(S.lowCache?S.lowCache.say:''));
+    on('agSimpleSay',()=>speak(S.simpleSay||''));
+    on('agShare',shareNow);
+  }
 
   window.agentOpen=openDrawer;
   window.agentState=S;
