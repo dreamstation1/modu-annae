@@ -610,30 +610,26 @@ function iye(w){const c=String(w).charCodeAt(String(w).length-1)-0xAC00;return c
       const r=await fetch(olBase()+'/api/tags',{signal:c.signal});
       const names=((await r.json()).models||[]).map(m=>m.name);
       const want=lsGet('agentOllamaModel');
-      OL.model=names.find(n=>n===want)||names.find(n=>/^qwen/.test(n))||names.find(n=>/llama3/.test(n))||names[0]||'';
+      OL.model=names.find(n=>n===want)||names.find(n=>/^qwen3\.5/.test(n))||names.find(n=>/^qwen3/.test(n))||names.find(n=>/^qwen/.test(n))||names.find(n=>/llama3/.test(n))||names[0]||'';
       OL.ok=!!OL.model;
     }catch(e){OL.ok=false;}
     return OL.ok;
   }
   async function askOllama(text,onTool){
+    const facts=await askRules(text,onTool);S.lastFacts=facts;
+    onTool('ollama');
     oHist.push({role:'user',content:text});
-    const tools=TOOLS.map(t=>({type:'function',function:{name:t.name,description:t.description,parameters:t.input_schema}}));
-    for(let i=0;i<6;i++){
-      const res=await fetch(olBase()+'/api/chat',{method:'POST',headers:{'content-type':'application/json'},
-        body:JSON.stringify({model:OL.model,stream:false,options:{temperature:0.3},tools,messages:[{role:'system',content:sysPrompt()+' 반드시 한국어로만 답해.'}].concat(oHist.slice(-16))})});
-      if(!res.ok)throw new Error('응답 오류 '+res.status);
-      const m=(await res.json()).message||{};
-      oHist.push(m);
-      const calls=m.tool_calls||[];
-      if(!calls.length)return String(m.content||'').trim()||'다시 한 번 물어봐 주세요.';
-      for(const c of calls){
-        const f=c.function||{};onTool(f.name);
-        let a=f.arguments;if(typeof a==='string'){try{a=JSON.parse(a);}catch(e){a={};}}
-        let out;try{out=await tool(f.name,a||{});}catch(e){out={error:String(e.message||e)};}
-        oHist.push({role:'tool',tool_name:f.name,content:JSON.stringify(out)});
-      }
-    }
-    return'확인이 오래 걸렸어요. 다시 물어봐 주세요.';
+    const sys=sysPrompt()+`
+지금 확인된 정보: "${facts}"
+위 확인된 정보에 있는 버스 번호, 순서, 시간, 저상 여부만 써서 답해. 숫자와 순서를 절대 바꾸거나 새로 지어내지 마. 확인된 정보에 없는 내용은 모른다고 짧게 말해. '확인된 정보'라는 말은 쓰지 말고, 정류장에서 직접 안내하듯 자연스럽게 말해. 반드시 한국어로만 답해.`;
+    const res=await fetch(olBase()+'/api/chat',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({model:OL.model,stream:false,...(/qwen3|gemma4/.test(OL.model)?{think:false}:{}),options:{temperature:0.2,num_gpu:0},keep_alive:'60m',messages:[{role:'system',content:sys}].concat(oHist.slice(-8))})});
+    if(!res.ok)throw new Error('응답 오류 '+res.status);
+    const m=(await res.json()).message||{};
+    const ans=String(m.content||'').trim();
+    if(!ans)return facts;
+    oHist.push({role:'assistant',content:ans});
+    return ans;
   }
   async function askRules(text,onTool){
     const t=text.replace(/\s+/g,' ');
@@ -667,7 +663,7 @@ function iye(w){const c=String(w).charCodeAt(String(w).length-1)-0xAC00;return c
     }
     return q.sentence;
   }
-  const TOOL_LABEL={find_stop:'정류소 찾는 중',stop_queue:'도착 순서 계산 중',can_i_catch:'신호·거리 계산 중'};
+  const TOOL_LABEL={find_stop:'정류소 찾는 중',stop_queue:'도착 순서 계산 중',can_i_catch:'신호·거리 계산 중',ollama:'대답 만드는 중'};
   async function ask(text){
     if(!text.trim()||S.busy)return;
     S.busy=true;S.tab='chat';S.chat.push({c:'me',t:text});render();
