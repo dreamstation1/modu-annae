@@ -215,7 +215,7 @@
           b.onclick=()=>openDrawer(s);
           sel.appendChild(b);
         }
-        if(S.open&&s&&s.mode!=='subway'&&s!==S.stop){S.stop=s;S.queue=null;S.lastOrder='';refresh(true);if(S.boardStop)boardStation();}
+        if(S.open&&s&&s.mode!=='subway'&&s!==S.stop){S.stop=s;S.queue=null;S.lastOrder='';refresh(true);if(S.boardStop&&!boardPopup())boardStation();}
       }catch(e){}
       return r;
     };
@@ -706,9 +706,14 @@ ${list?'다가오는 버스 목록(가까운 순):\n'+list+'\n':''}위 확인된
       `<div class="note"><span>${esc(ledNote())}</span></div></div><div style="color:#aaa;font-size:14px;margin-top:10px">①②③ 정류장에 서는 순서 · 파란 글씨 = 저상버스 · 빨간 줄 = 내 버스</div>`;
   }
   function boardBase(){let b=(lsGet('agentBoard')||'').trim().replace(/\/+$/,'');if(b&&!/^https?:\/\//.test(b))b='http://'+b;return b;}
+  function boardPopup(){return location.protocol==='https:'&&boardBase().startsWith('http:');}
   async function boardHit(path){
     const base=boardBase();if(!base)return false;
-    if(location.protocol==='https:'&&base.startsWith('http:')){S.boardMsg='전광판은 노트북에서 연 시연 주소(http://…)에서만 연결돼요.';return false;}
+    if(boardPopup()){
+      const w=window.open(base+path+(path.includes('?')?'&':'?')+'pop=1','agboard');
+      if(!w){S.boardMsg='전광판 창이 막혔어요. 버튼을 한 번 더 눌러 주세요.';return false;}
+      return true;
+    }
     try{await fetch(base+path,{mode:'no-cors',cache:'no-store'});return true;}catch(e){return false;}
   }
   function cut(t,n){t=String(t);while(encodeURIComponent(t).length>n)t=t.slice(0,-1);return t;}
@@ -725,8 +730,8 @@ ${list?'다가오는 버스 목록(가까운 순):\n'+list+'\n':''}위 확인된
   }
   async function boardSend(text){
     if(!boardBase()||!S.stop)return'';
-    if(S.boardStop!==S.stop.ars)await boardStation();
-    const ok=await boardHit(`/notice?text=${encodeURIComponent(cut(text,180))}`);
+    const ok=await boardHit(`/notice?text=${encodeURIComponent(cut(text,180))}&ars=${encodeURIComponent(S.stop.ars)}&name=${encodeURIComponent(cut(S.stop.name,120))}`);
+    if(ok)S.boardStop=S.stop.ars;
     S.boardMsg=ok?`전광판 아랫줄에 15초 동안 띄웠어요: ${cut(text,180)}`:S.boardMsg||'전광판에 연결하지 못했어요.';
     return S.boardMsg;
   }
@@ -908,7 +913,7 @@ ${list?'다가오는 버스 목록(가까운 순):\n'+list+'\n':''}위 확인된
           :`<p>내릴 정류장을 고르고, 버스에 타면 버튼을 눌러 주세요.</p><select id="agDest"><option value="">내릴 정류장 선택</option>${a.opts.map(([j,n],k)=>`<option value="${j}"${String(j)===String(S.alightIdx)?' selected':''}>${k+1}. ${esc(n)}</option>`).join('')}</select><div class="ag-btns"><button type="button" class="pri" id="agRide"${S.alightIdx?'':' disabled'}>버스 탔어요 · 알림 시작</button></div>`)+`</div>`);
       }
       else if(part==='card')h.push(`<div class="ag-box"><h4>🪧 기사님께 보여주기</h4><p>누르면 화면 가득 크게 보여요. 말하기 어려울 때 기사님이나 주변 사람에게 보여 주세요.</p><div class="ag-cards">${cardTexts().map((t,k)=>`<button type="button" data-card="${k}">${esc(t)}</button>`).join('')}</div><input id="agCardIn" placeholder="직접 쓰기 (예: 다음 정류장에서 내려요)" value="${esc(S.cardText)}"><div class="ag-btns"><button type="button" id="agCardGo">크게 보기</button></div></div>`);
-      else if(part==='led')h.push(`<div class="ag-box"><h4>🟧 정류장 LED 전광판</h4><p>중간발표 때 만든 LED 전광판에 이 정류장 도착 정보와 알림을 띄워요. 전광판을 켜면 처음에 나오는 주소(IP)를 넣어 주세요.</p><input id="agBoard" inputmode="url" placeholder="전광판 주소 예) 172.20.10.3" value="${esc(lsGet('agentBoard')||'')}"><div class="ag-btns"><button type="button" class="pri" id="agBdStop"${boardBase()?'':' disabled'}>이 정류장 띄우기</button><button type="button" id="agBdRoute"${boardBase()&&S.route?'':' disabled'}>내 버스 고정</button><button type="button" id="agBdMsg"${boardBase()?'':' disabled'}>알림 보내기</button></div>${S.boardMsg?`<p><b>${esc(S.boardMsg)}</b></p>`:''}<div class="ag-btns"><button type="button" id="agLed">화면으로 크게 보기</button></div></div>`);
+      else if(part==='led')h.push(`<div class="ag-box"><h4>🟧 정류장 LED 전광판</h4><p>중간발표 때 만든 LED 전광판에 이 정류장 도착 정보와 알림을 띄워요. 전광판을 켜면 처음에 나오는 주소(IP)를 넣어 주세요. 휴대폰 핫스팟만 있으면 길에서도 돼요. 전광판에 'WIFI SETUP'이 나오면 휴대폰 와이파이에서 BUS-LED에 연결하고 192.168.4.1에서 핫스팟 이름·비밀번호를 한 번 저장해 주세요.</p><input id="agBoard" inputmode="url" placeholder="전광판 주소 예) 172.20.10.3" value="${esc(lsGet('agentBoard')||'')}"><div class="ag-btns"><button type="button" class="pri" id="agBdStop"${boardBase()?'':' disabled'}>이 정류장 띄우기</button><button type="button" id="agBdRoute"${boardBase()&&S.route?'':' disabled'}>내 버스 고정</button><button type="button" id="agBdMsg"${boardBase()?'':' disabled'}>알림 보내기</button></div>${S.boardMsg?`<p><b>${esc(S.boardMsg)}</b></p>`:''}<div class="ag-btns"><button type="button" id="agLed">화면으로 크게 보기</button></div></div>`);
       else if(part==='caption')h.push(`<div class="ag-box"><h4>💬 주변 말소리 글자로 보기</h4><p>기사님 말이나 정류장·차내 안내방송을 큰 글자로 바꿔 보여 줘요.</p><div class="ag-btns"><button type="button" class="pri" id="agCap">받아쓰기 시작</button></div></div>`);
       else if(part==='lowline')h.push(`<div class="ag-box"><h4>♿ 다음 저상버스</h4><div id="agLow"></div><div class="ag-btns"><button type="button" id="agLowRe">↻ 다시 보기</button>${p.mute?'':'<button type="button" id="agLowSay">🔊 듣기</button>'}</div></div>`);
       else if(part==='pick')h.push(`<div class="ag-box"><h4>🙂 편하게 탈 차 고르기</h4><p><b>${esc(pickSentence())}</b></p><p>${S.profile==='stroller'?'저상버스이고 덜 붐비는 차를 먼저 골라요.':'덜 붐비는 차를 먼저 골라요.'}</p></div>`);
