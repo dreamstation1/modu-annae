@@ -622,6 +622,20 @@ function iye(w){const c=String(w).charCodeAt(String(w).length-1)-0xAC00;return c
   }
   async function askOllama(text,onTool){
     const facts=await askRules(text,onTool);S.lastFacts=facts;
+    const tt=text.replace(/\s+/g,' ');
+    if(parseTrip(tt)||/(갈아|갈앝|환승|어디서|어디로)/.test(tt))return facts;
+    if(isSmallTalk(tt)){
+      onTool('ollama');
+      oHist.push({role:'user',content:text});
+      const r=await fetch(olBase()+'/api/chat',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({model:OL.model,stream:false,...(/qwen3|gemma4/.test(OL.model)?{think:false}:{}),options:{temperature:0.5},keep_alive:'60m',
+          messages:[{role:'system',content:`너는 '모두의 안내'라는 버스 안내 도우미야. 이용자 유형: ${P().label}. 현재 정류소: ${S.stop?S.stop.name:'없음'}. 편한 존댓말로 한 문장, 길어도 두 문장으로 짧게 대답해. 이용자가 인사하면 짧게 인사로 받고 무엇을 도와드릴지 물어. 버스와 상관없는 이야기는 짧게 받아 주기만 해. 환영합니다, 친구처럼, 힘드셨을 텐데 같은 꾸민 말은 쓰지 마. 이모지·기호 없이, 반드시 한국어로만.`}].concat(oHist.slice(-6))})});
+      if(!r.ok)return facts;
+      const a=String(((await r.json()).message||{}).content||'').trim();
+      if(!a)return facts;
+      oHist.push({role:'assistant',content:a});
+      return a;
+    }
     const list=S.queue&&S.queue.list?S.queue.list.filter(v=>!v.leaving).slice(0,8).map((v,i)=>`${i+1}. ${v.route}번 ${v.atStop?'지금 정류장에 있음':fmt(v.eta)+' 뒤 도착'}, ${v.low?'저상버스':'일반버스'}, 혼잡도 ${CONG[v.cong]||'정보 없음'}`).join('\n'):'';
     onTool('ollama');
     oHist.push({role:'user',content:text});
@@ -674,8 +688,84 @@ ${list?'다가오는 버스 목록(가까운 순):\n'+list+'\n':''}위 확인된
     if(walkSay)return`${bn(route)}은 이 정류장에 서지 않아요. ${walkSay}`;
     return`${bn(route)}은 이 근처에 서지 않아요. 여기서 오는 버스로는 바로 갈아탈 곳을 찾지 못했어요.`;
   }
+  const SKIP_WORD=/^(여기|여기서|지금|이|그|저|이곳|어디|현재|내가|제가|나|저는|우리)$/;
+  function stopAt(n){return STOPS[STOP_BY_NODE.get(String(n))]||NODE.get(String(n))||null;}
+  function stopLabel(s){return s.name+(s.ars&&s.ars!=='0'?'('+s.ars+')':'');}
+  function pickStop(q,near){
+    q=String(q||'').replace(/\s/g,'');if(!q||SKIP_WORD.test(q))return null;
+    let hits=findStops(q).filter(s=>s&&!/가상/.test(s.name));
+    if(!hits.length&&/역$/.test(q))hits=findStops(q.replace(/역$/,'')).filter(s=>s&&!/가상/.test(s.name));
+    if(near&&hits.length>1)hits.sort((a,b)=>hav(near.lat,near.lng,a.lat,a.lng)-hav(near.lat,near.lng,b.lat,b.lng));
+    return hits[0]||null;
+  }
+  function parseTrip(t){
+    if(!/(가려면|가야|갈려면|가는 ?(법|길|방법)|어떻게 ?가|어케 ?가|가고 ?싶|길 ?찾|갈 ?수|가 ?줘|까지)/.test(t))return null;
+    let from=null,to=null;
+    const fm=t.match(/([가-힣0-9.·]{2,})\s*(?:정류소|정류장)?\s*에서/);
+    if(fm){const q=fm[1].replace(/정류소|정류장/g,'');if(!SKIP_WORD.test(q))from=/^\d{5}$/.test(q)?findStops(q)[0]:pickStop(q,S.stop);}
+    const rest=fm?t.slice(t.indexOf(fm[0])+fm[0].length):t;
+    const ars=rest.match(/(?:^|\D)(\d{5})(?!\d)/);
+    if(ars)to=findStops(ars[1])[0]||null;
+    if(!to){
+      const m=rest.match(/([가-힣0-9.·]{2,})\s*(?:정류소|정류장)/)||rest.match(/([가-힣0-9.·]{2,}?)\s*(?:까지|으로|로|에)\s*(?:가|갈|어떻게|어케)/)||rest.match(/([가-힣0-9.·]{2,}?)\s*(?:어떻게|어케|가려면|갈려면|가는|가야|가고)/);
+      if(m)to=pickStop(m[1].replace(/정류소|정류장/g,''),from||S.stop);
+    }
+    return to?{from,to}:null;
+  }
+  function planTrip(from,to){
+    if(typeof plannerFindPaths!=='function')return null;
+    const fi=STOPS.indexOf(from),ti=STOPS.indexOf(to);if(fi<0||ti<0)return null;
+    const saved={from:plannerPlaces.from,to:plannerPlaces.to};plannerPlaces.from=null;plannerPlaces.to=null;
+    try{const ps=plannerFindPaths(fi,ti);return plannerRank(typeof plannerGroupPaths==='function'?plannerGroupPaths(ps):ps,'optimal');}
+    finally{plannerPlaces.from=saved.from;plannerPlaces.to=saved.to;}
+  }
+  function cleanRouteName(n){return String(n).replace(/^(경기|인천|서울)\s*/,'').replace(/\s*[·(].*$/,'').trim();}
+  function legRoutes(l){return [...new Set((l.routeNames&&l.routeNames.length?l.routeNames:[l.data.route.name]).map(cleanRouteName))].slice(0,3);}
+  const isSub=n=>/(호선|선|라인)$/.test(String(n));
+  function rlabel(n){return isSub(n)?'지하철 '+n:bn(n);}
+  function tripSentence(from,to){
+    if(String(from.node)===String(to.node))return`지금 계신 곳이 바로 ${to.name} 정류장이에요.`;
+    const d=hav(from.lat,from.lng,to.lat,to.lng),walkTxt=m=>`약 ${Math.max(10,Math.round(m*1.25/10)*10)}미터`;
+    const ps=planTrip(from,to);
+    if(ps==null)return'길찾기 정보를 불러오지 못했어요.';
+    if(!ps.length||d<350){
+      if(d<1200)return`${stopLabel(to)} 정류장은 ${dir8(from,to)}으로 ${walkTxt(d)}, 걸어서 ${Math.max(1,Math.round(d*1.25/67))}분쯤이에요. 버스보다 걷는 게 빨라요.`;
+      return`${to.name}까지 가는 버스 경로를 찾지 못했어요.`;
+    }
+    const p=ps[0],out=[],place=(s,sub)=>sub?s.name.replace(/역?$/,'역'):s.name+' 정류장';
+    p.legs.forEach((l,k)=>{
+      const on=stopAt(l.data.route.nodes[l.start])||{name:'정류소'},off=stopAt(l.data.route.nodes[l.end])||{name:'정류소'};
+      const names=legRoutes(l),sub=isSub(names[0]),nm=sub?rlabel(names[0]):names.map(bn).join(' 또는 ');
+      let pre;
+      if(k===0)pre=String(on.node)===String(from.node)?'여기서 ':`먼저 ${dir8(from,on)}으로 ${walkTxt(hav(from.lat,from.lng,on.lat,on.lng))} 걸어 ${place(on,sub)}으로 가서 `;
+      else{const prev=stopAt(p.legs[k-1].data.route.nodes[p.legs[k-1].end]);pre=prev&&String(prev.node)===String(on.node)?'같은 곳에서 ':`${place(on,sub)}으로 조금 걸어가서 `;}
+      let live='';
+      if(k===0&&!sub&&String(on.node)===String(from.node)&&S.queue){const v=S.queue.list.find(x=>!x.leaving&&names.includes(x.route));if(v)live=` ${bn(v.route)}은 ${v.atStop?'지금 정류장에 있어요':fmt(v.eta)+' 뒤에 와요'}.`;}
+      out.push(`${pre}${nm}${k?'으로 갈아타':'을 타'}고 ${l.end-l.start}${sub?'개 역':'정거장'} 가서 ${sub?place(off,true):off.name}에서 내리세요.${live}`);
+    });
+    const last=p.legs[p.legs.length-1],lastOff=stopAt(last.data.route.nodes[last.end]);
+    if(lastOff&&String(lastOff.node)!==String(to.node)){const w=hav(lastOff.lat,lastOff.lng,to.lat,to.lng);if(w>30)out.push(`내려서 ${to.name}까지 ${walkTxt(w)} 걸어가면 돼요.`);}
+    out.push(`전체 약 ${p.minutes}분${p.transfers?`, 환승 ${p.transfers}번`:''}이에요.`);
+    const key=x=>x.legs.map(l=>legRoutes(l)[0]).join();
+    const alt=ps.slice(1).find(x=>key(x)!==key(p));
+    if(alt)out.push(`다른 방법으로는 ${alt.legs.map(l=>rlabel(legRoutes(l)[0])).join(' → ')}, 약 ${alt.minutes}분이에요.`);
+    return`${stopLabel(to)}까지 가는 방법이에요. `+out.join(' ');
+  }
+  const SMALL_TALK_BUS=/(버스|정류|도착|타|내리|내려|환승|갈아|저상|혼잡|붐|몇 ?번째|언제|가려|가야|어떻게|어케|길|\d{2,}|역|노선)/;
+  function isGreeting(t){return /^(안녕|하이|ㅎㅇ|헬로|hello|hi\b|반가|반갑|좋은 ?(아침|저녁))/i.test(t.trim());}
+  function isSmallTalk(t){return isGreeting(t)&&!SMALL_TALK_BUS.test(t.replace(/^(안녕하세요|안녕)/,''))||!SMALL_TALK_BUS.test(t);}
   async function askRules(text,onTool){
     const t=text.replace(/\s+/g,' ');
+    if(isSmallTalk(t))return isGreeting(t)?'안녕하세요! 버스 안내 도우미예요. "143번 언제 와?", "505번 어디서 타?", "19437 정류소 어떻게 가?"처럼 편하게 물어보세요.':'저는 버스 길 안내를 도와드려요. 타실 버스 번호나 가실 정류장을 말해 주시면 바로 알려 드릴게요.';
+    const trip=parseTrip(t);
+    if(trip){
+      const from=trip.from||S.stop;
+      if(!from)return`출발 정류장을 알려 주세요. "종로2가에서 ${trip.to.name} 어떻게 가?"처럼 물어보면 돼요.`;
+      if(trip.from&&trip.from!==S.stop){const idx=STOPS.indexOf(trip.from);if(idx>=0&&typeof selectStop==='function')selectStop(idx,true);S.stop=trip.from;S.queue=null;}
+      onTool('trip');
+      try{await tool('stop_queue',{route:S.route});}catch(e){}
+      return tripSentence(from,trip.to);
+    }
     const routes=S.queue?S.queue.routes:[];
     const m=[...t.matchAll(/([0-9]{2,4}(?:-[0-9])?|[가-힣]{2}[0-9]{2})\s*번/g)].map(x=>x[1]).concat([...t.matchAll(/\b([0-9]{2,4})\b/g)].map(x=>x[1]));
     const route=m.find(r=>routes.includes(r)||ROUTES.some(x=>x.name===r))||'';
@@ -733,7 +823,7 @@ ${list?'다가오는 버스 목록(가까운 순):\n'+list+'\n':''}위 확인된
     }
     return q.sentence;
   }
-  const TOOL_LABEL={find_stop:'정류소 찾는 중',stop_queue:'도착 순서 계산 중',can_i_catch:'신호·거리 계산 중',ollama:'대답 만드는 중'};
+  const TOOL_LABEL={trip:'길 찾는 중',find_stop:'정류소 찾는 중',stop_queue:'도착 순서 계산 중',can_i_catch:'신호·거리 계산 중',ollama:'대답 만드는 중'};
   async function ask(text){
     if(!text.trim()||S.busy)return;
     S.busy=true;S.tab='chat';S.chat.push({c:'me',t:text});render();
