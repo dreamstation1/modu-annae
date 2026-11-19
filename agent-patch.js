@@ -596,7 +596,7 @@ function iye(w){const c=String(w).charCodeAt(String(w).length-1)-0xAC00;return c
   }
   function sysPrompt(){
     return `너는 서울 시내버스 이용을 돕는 안내 도우미야. 이용자 유형: ${P().label}. 현재 정류소: ${S.stop?S.stop.name+'('+S.stop.ars+')':'없음'}. 선택한 노선: ${S.route||'없음'}.
-버스 정보는 반드시 도구로 실시간 확인한 뒤 답해. 2~4문장 존댓말로, 표·기호·이모지 없이 귀로 듣기 좋게 말해.
+버스 정보는 반드시 도구로 실시간 확인한 뒤 답해. 인사말(안녕하세요 등) 없이 바로 본론부터, 2~4문장 존댓말로, 표·기호·이모지 없이 귀로 듣기 좋게 말해.
 버스 순서는 "맨 앞, 두 번째"로, 위치는 미터로 말해. 휠체어 사용자에게는 저상버스만 권하고, 위험하면 서두르게 하지 말고 다음 버스를 권해.`;
   }
   const oHist=[];
@@ -632,7 +632,7 @@ ${list?'다가오는 버스 목록(가까운 순):\n'+list+'\n':''}위 확인된
       body:JSON.stringify({model:OL.model,stream:false,...(/qwen3|gemma4/.test(OL.model)?{think:false}:{}),options:{temperature:0.2,num_gpu:0},keep_alive:'60m',messages:[{role:'system',content:sys}].concat(oHist.slice(-8))})});
     if(!res.ok)throw new Error('응답 오류 '+res.status);
     const m=(await res.json()).message||{};
-    const ans=String(m.content||'').trim();
+    const ans=String(m.content||'').trim().replace(/^((안녕하세요|안녕하십니까|반갑습니다)[!.,~?]*\s*)+/,'').trim();
     if(!ans||/확인된 정보|제공된 정보|알 수 없|포함되어 있지 않/.test(ans))return facts;
     oHist.push({role:'assistant',content:ans});
     return ans;
