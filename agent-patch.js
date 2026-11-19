@@ -642,7 +642,9 @@ ${list?'다가오는 버스 목록(가까운 순):\n'+list+'\n':''}위 확인된
     const routes=S.queue?S.queue.routes:[];
     const m=[...t.matchAll(/([0-9]{2,4}(?:-[0-9])?|[가-힣]{2}[0-9]{2})\s*번/g)].map(x=>x[1]).concat([...t.matchAll(/\b([0-9]{2,4})\b/g)].map(x=>x[1]));
     const route=m.find(r=>routes.includes(r)||ROUTES.some(x=>x.name===r))||'';
-    const stopM=t.match(/([가-힣0-9.]{2,})(?:\s*(?:정류장|정류소))?에서/)||t.match(/([가-힣0-9.]{2,}(?:역|사거리|입구|가|앞|정류장|정류소))(?:으로|은|는|$|\s)/);
+    const nearQ=/(다음|이전|지난|전)\s*(정류장|정류소|정거장|역)/.test(t);
+    let stopM=t.match(/([가-힣0-9.]{2,})(?:\s*(?:정류장|정류소))?에서/)||t.match(/([가-힣0-9.]{2,}(?:역|사거리|입구|가|앞|정류장|정류소))(?:으로|은|는|$|\s)/);
+    if(stopM&&/^(다음|이전|지난|전)/.test(stopM[1]))stopM=null;
     if(stopM&&(!S.stop||!S.stop.name.includes(stopM[1].replace(/정류장|정류소/,'')))){
       onTool('find_stop');const f=await tool('find_stop',{query:stopM[1]});
       if(!f.selected)return`"${stopM[1]}" 정류소를 찾지 못했어요. 이름을 다시 말해 주세요.`;
@@ -656,6 +658,17 @@ ${list?'다가오는 버스 목록(가까운 순):\n'+list+'\n':''}위 확인된
     }
     onTool('stop_queue');
     const q=await tool('stop_queue',{route:S.route});
+    if(nearQ){
+      if(!S.route)return'어떤 버스의 다음 정류장을 알려 드릴까요? 버스 번호를 같이 말해 주세요.';
+      const r=routeObj(S.route);
+      if(!r||!r.nodes)return`${bn(S.route)} 노선 정보를 찾지 못했어요.`;
+      const mv=S.queue&&S.queue.list.find(v=>v.route===S.route),i=stopIdx(r,S.stop,mv?mv.staOrd:1);
+      if(i<0)return`${bn(S.route)}은 ${S.stop.name} 정류장을 지나지 않아요.`;
+      const prev=/(이전|지난|전)\s*(정류|정거장|역)/.test(t)&&!/다음/.test(t);
+      const s=NODE.get(String(r.nodes[prev?i-1:i+1])),s2=!prev&&NODE.get(String(r.nodes[i+2]));
+      if(!s)return`${S.stop.name}은 ${bn(S.route)}의 ${prev?'첫':'마지막'} 정류장이에요.`;
+      return`${bn(S.route)}은 ${S.stop.name} ${prev?'바로 전 정류장이':'다음 정류장이'} ${jo(s.name,'이에요','예요')}.`+(s2?` 그다음은 ${jo(s2.name,'이에요','예요')}.`:'');
+    }
     if(/(덜 ?붐|한산|혼잡|자리)/.test(t)){
       const has=S.queue.list.filter(v=>!v.leaving&&CONG[v.cong]),pool=route?has.filter(v=>v.route===route):has;
       const c=(pool.length?pool:has).slice().sort((a,b)=>a.cong-b.cong||a.eta-b.eta)[0];
