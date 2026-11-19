@@ -637,6 +637,42 @@ ${list?'다가오는 버스 목록(가까운 순):\n'+list+'\n':''}위 확인된
     oHist.push({role:'assistant',content:ans});
     return ans;
   }
+  function dir8(a,b){return['북','북동','동','남동','남','남서','서','북서'][Math.round(bearingDeg(a.lat,a.lng,b.lat,b.lng)/45)%8]+'쪽';}
+  function transferSentence(route){
+    const tr=ROUTES.find(x=>x.name===route)||routeObj(route);
+    if(!tr||!tr.nodes)return`${bn(route)} 노선 정보를 찾지 못했어요.`;
+    const here=S.stop,trNodes=tr.nodes.map(String),trSet=new Set(trNodes);
+    if(trSet.has(String(here.node)))return`${bn(route)}은 여기 ${here.name} 정류장에서 바로 타면 돼요.`;
+    const trStops=trNodes.map(n=>NODE.get(n)).filter(Boolean);
+    let near=null;
+    for(const s of trStops){const d=hav(here.lat,here.lng,s.lat,s.lng);if(!near||d<near.d)near={s,d};}
+    const walkM=near?Math.round(near.d*1.25/10)*10:1e9;
+    let best=null;
+    const seen=new Set();
+    for(const v of (S.queue&&S.queue.list)||[]){
+      if(v.leaving||seen.has(v.route))continue;seen.add(v.route);
+      const ro=ROUTE_BY_ID.get(String(v.routeId));if(!ro||!ro.nodes)continue;
+      const i=stopIdx(ro,here,v.staOrd||1);if(i<0)continue;
+      for(let j=i+1;j<ro.nodes.length&&j<=i+25;j++){
+        const s=NODE.get(String(ro.nodes[j]));if(!s)continue;
+        let at=null,w=0;
+        if(trSet.has(String(ro.nodes[j])))at=s;
+        else{for(const x of trStops){const d=hav(s.lat,s.lng,x.lat,x.lng);if(d<=150&&(!at||d<w)){at=x;w=d;}}}
+        if(at){const c={via:v.route,low:v.low,eta:v.eta,atStop:v.atStop,hops:j-i,off:s,on:at,walk:Math.round(w*1.25/10)*10};
+          const score=c.hops*90+(c.eta||0)+c.walk;if(!best||score<best.score)best={...c,score};break;}
+      }
+    }
+    const walkSay=near&&walkM<=500?`걸어서 ${dir8(here,near.s)}으로 약 ${walkM}미터 가면 ${near.s.name} 정류장${near.s.ars?'('+near.s.ars+')':''}에서 ${bn(route)}을 탈 수 있어요.`:'';
+    let rideSay='';
+    if(best){
+      const when=best.atStop?'지금 정류장에 있어요':`${fmt(best.eta)} 뒤에 와요`;
+      rideSay=`여기서 ${bn(best.via)}을 타고 ${best.hops}정거장 가서 ${best.off.name}에서 내리세요. `+(best.walk?`거기서 약 ${best.walk}미터 걸어 ${best.on.name} 정류장에서 ${bn(route)}으로 갈아타면 돼요.`:`같은 정류장에서 ${bn(route)}으로 갈아타면 돼요.`)+` ${bn(best.via)}은 ${when}.`+(P().low&&!best.low?' 다만 이 차는 저상버스가 아니에요.':'');
+    }
+    if(walkSay&&(!best||walkM<=250))return`${bn(route)}은 이 정류장에 서지 않아요. ${walkSay}`+(rideSay&&walkM>150?` 버스로 가려면, ${rideSay}`:'');
+    if(rideSay)return`${bn(route)}은 이 정류장에 서지 않아요. ${rideSay}`+(walkSay?` 걸어가려면 ${walkSay}`:'');
+    if(walkSay)return`${bn(route)}은 이 정류장에 서지 않아요. ${walkSay}`;
+    return`${bn(route)}은 이 근처에 서지 않아요. 여기서 오는 버스로는 바로 갈아탈 곳을 찾지 못했어요.`;
+  }
   async function askRules(text,onTool){
     const t=text.replace(/\s+/g,' ');
     const routes=S.queue?S.queue.routes:[];
@@ -645,11 +681,17 @@ ${list?'다가오는 버스 목록(가까운 순):\n'+list+'\n':''}위 확인된
     const nearQ=/(다음|이전|지난|전)\s*(정류장|정류소|정거장|역)/.test(t);
     let stopM=t.match(/([가-힣0-9.]{2,})(?:\s*(?:정류장|정류소))?에서/)||t.match(/([가-힣0-9.]{2,}(?:역|사거리|입구|가|앞|정류장|정류소))(?:으로|은|는|$|\s)/);
     if(stopM&&/^(다음|이전|지난|전)/.test(stopM[1]))stopM=null;
+    if(stopM){const sq=stopM[1].replace(/정류장|정류소/g,'');if(sq.length<2||/^(이|그|저|지금|여기|현재|이곳|여기서)$/.test(sq))stopM=null;}
     if(stopM&&(!S.stop||!S.stop.name.includes(stopM[1].replace(/정류장|정류소/,'')))){
       onTool('find_stop');const f=await tool('find_stop',{query:stopM[1]});
       if(!f.selected)return`"${stopM[1]}" 정류소를 찾지 못했어요. 이름을 다시 말해 주세요.`;
     }
     if(!S.stop)return'먼저 정류소를 알려 주세요. "종로2가에서 143번 언제 와?"처럼 물어보면 돼요.';
+    if(/(갈아타|갈아 타|환승)/.test(t)){
+      if(!route)return'어느 버스로 갈아타실지 번호를 알려 주세요.';
+      onTool('stop_queue');await tool('stop_queue',{route:S.route});
+      return transferSentence(route);
+    }
     if(route&&route!==S.route){S.route=route;lsSet('agentRoute',route);}
     if(/(탈 ?수|타려면|놓치|늦|뛰어|가면)/.test(t)){
       if(!S.route)return'어떤 버스를 타실지 번호를 알려 주세요.';
