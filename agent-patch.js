@@ -643,7 +643,8 @@ ${list?'다가오는 버스 목록(가까운 순):\n'+list+'\n':''}위 확인된
     if(!tr||!tr.nodes)return`${bn(route)} 노선 정보를 찾지 못했어요.`;
     const here=S.stop,trNodes=tr.nodes.map(String),trSet=new Set(trNodes);
     if(trSet.has(String(here.node)))return`${bn(route)}은 여기 ${here.name} 정류장에서 바로 타면 돼요.`;
-    const trStops=trNodes.map(n=>NODE.get(n)).filter(Boolean);
+    const real=s=>s&&!/가상/.test(s.name);
+    const trStops=trNodes.map(n=>NODE.get(n)).filter(real);
     let near=null;
     for(const s of trStops){const d=hav(here.lat,here.lng,s.lat,s.lng);if(!near||d<near.d)near={s,d};}
     const walkM=near?Math.round(near.d*1.25/10)*10:1e9;
@@ -654,7 +655,7 @@ ${list?'다가오는 버스 목록(가까운 순):\n'+list+'\n':''}위 확인된
       const ro=ROUTE_BY_ID.get(String(v.routeId));if(!ro||!ro.nodes)continue;
       const i=stopIdx(ro,here,v.staOrd||1);if(i<0)continue;
       for(let j=i+1;j<ro.nodes.length&&j<=i+25;j++){
-        const s=NODE.get(String(ro.nodes[j]));if(!s)continue;
+        const s=NODE.get(String(ro.nodes[j]));if(!real(s))continue;
         let at=null,w=0;
         if(trSet.has(String(ro.nodes[j])))at=s;
         else{for(const x of trStops){const d=hav(s.lat,s.lng,x.lat,x.lng);if(d<=150&&(!at||d<w)){at=x;w=d;}}}
@@ -687,10 +688,13 @@ ${list?'다가오는 버스 목록(가까운 순):\n'+list+'\n':''}위 확인된
       if(!f.selected)return`"${stopM[1]}" 정류소를 찾지 못했어요. 이름을 다시 말해 주세요.`;
     }
     if(!S.stop)return'먼저 정류소를 알려 주세요. "종로2가에서 143번 언제 와?"처럼 물어보면 돼요.';
-    if(/(갈아타|갈아 타|환승)/.test(t)){
-      if(!route)return'어느 버스로 갈아타실지 번호를 알려 주세요.';
+    const whereQ=/(갈아|갈앝|갈아탈|환승|어디)/.test(t);
+    if(whereQ&&!route&&/(갈아|갈앝|환승)/.test(t))return'어느 버스로 갈아타실지 번호를 알려 주세요.';
+    if(route&&(whereQ||/(타야|타려면|타고 ?싶|탈래|탈 ?거)/.test(t))){
       onTool('stop_queue');await tool('stop_queue',{route:S.route});
-      return transferSentence(route);
+      const tr=ROUTES.find(x=>x.name===route)||routeObj(route);
+      const here=!!(tr&&tr.nodes&&tr.nodes.map(String).includes(String(S.stop.node)));
+      if(whereQ||!here)return transferSentence(route);
     }
     if(route&&route!==S.route){S.route=route;lsSet('agentRoute',route);}
     if(/(탈 ?수|타려면|놓치|늦|뛰어|가면)/.test(t)){
@@ -707,7 +711,9 @@ ${list?'다가오는 버스 목록(가까운 순):\n'+list+'\n':''}위 확인된
       const mv=S.queue&&S.queue.list.find(v=>v.route===S.route),i=stopIdx(r,S.stop,mv?mv.staOrd:1);
       if(i<0)return`${bn(S.route)}은 ${S.stop.name} 정류장을 지나지 않아요.`;
       const prev=/(이전|지난|전)\s*(정류|정거장|역)/.test(t)&&!/다음/.test(t);
-      const s=NODE.get(String(r.nodes[prev?i-1:i+1])),s2=!prev&&NODE.get(String(r.nodes[i+2]));
+      const step=prev?-1:1,found=[];
+      for(let j=i+step;j>=0&&j<r.nodes.length&&found.length<2;j+=step){const x=NODE.get(String(r.nodes[j]));if(x&&!/가상/.test(x.name))found.push(x);}
+      const s=found[0],s2=!prev&&found[1];
       if(!s)return`${S.stop.name}은 ${bn(S.route)}의 ${prev?'첫':'마지막'} 정류장이에요.`;
       return`${bn(S.route)}은 ${S.stop.name} ${prev?'바로 전 정류장이':'다음 정류장이'} ${jo(s.name,'이에요','예요')}.`+(s2?` 그다음은 ${jo(s2.name,'이에요','예요')}.`:'');
     }
