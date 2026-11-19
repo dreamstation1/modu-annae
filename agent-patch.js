@@ -379,9 +379,39 @@ function iye(w){const c=String(w).charCodeAt(String(w).length-1)-0xAC00;return c
     n=String(n).replace(/^0+/,'');if(!n)return'공';if(n.length>4)return n.split('').map(c=>d[c]||'공').join('');
     let r='';[...n].forEach((c,i)=>{const k=n.length-1-i;if(c==='0')return;r+=(c==='1'&&k>0?'':d[c])+u[k];});return r;
   }
-  function sayable(t){
-    return String(t).replace(/([A-Za-z]?)(\d+)(?:-(\d+))?번(?!째)/g,(m,a,b,c)=>(a?({N:'엔',M:'엠'}[a.toUpperCase()]||a)+' ':'')+sino(b)+(c?' 다시 '+sino(c):'')+'번');
+  function routeSay(t){
+    return String(t).replace(/(\d{1,4}\s*-\s*\d{1,3})([가-힣]{2})(?=번)/g,'$2 $1')
+      .replace(/(^|[^\d:-])([A-Za-z]?)(\d{1,4})\s*-\s*(\d{1,3})(?![\d:-])/g,(m,p,a,b,c)=>p+(a?({N:'엔',M:'엠'}[a.toUpperCase()]||a)+' ':'')+sino(b)+'다시'+sino(c))
+      .replace(/(^|\s)[-–—]+(?=\s|$)/g,'$1');
   }
+  function sayable(t){
+    return routeSay(t).replace(/([A-Za-z]?)(\d+)번(?!째)/g,(m,a,b)=>(a?({N:'엔',M:'엠'}[a.toUpperCase()]||a)+' ':'')+sino(b)+'번');
+  }
+  (function(){
+    const O=window.SpeechSynthesisUtterance;
+    if(!O||O.agWrapped)return;
+    class U extends O{constructor(t){super(t==null?t:routeSay(t));}}
+    U.agWrapped=true;
+    window.SpeechSynthesisUtterance=U;
+  })();
+  (function(){
+    const F=window.fetch;
+    if(!F||F.agWrapped)return;
+    const N='[일이삼사오육칠팔구십백천만공영]+';
+    const R1=new RegExp('('+N+')\\s*-\\s*('+N+')([가-힣]{2})(?=번)','g'),R2=new RegExp('('+N+')\\s*-\\s*('+N+')','g');
+    const fix=s=>routeSay(s).replace(R1,'$3 $1다시$2').replace(R2,'$1다시$2').replace(/(^|[\s,])[-–—]+(?=[\s,]|$)/g,'$1');
+    const W=function(u,o){
+      try{
+        if(typeof u==='string'&&u.indexOf('/tts?')>=0){
+          const x=new URL(u,location.href),t=x.searchParams.get('text');
+          if(t){x.searchParams.set('text',fix(t));u=x.toString();}
+        }
+      }catch(e){}
+      return F.call(this,u,o);
+    };
+    W.agWrapped=true;
+    window.fetch=W;
+  })();
   function voices(){
     const all=('speechSynthesis' in window)?speechSynthesis.getVoices().filter(v=>v.lang&&v.lang.toLowerCase().startsWith('ko')):[];
     const score=v=>(/natural|online|neural/i.test(v.name)?3:0)+(/google/i.test(v.name)?2:0)+(/sunhi|injoon|hyunsu|yuna/i.test(v.name)?1:0);
